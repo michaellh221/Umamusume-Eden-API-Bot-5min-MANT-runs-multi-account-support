@@ -650,6 +650,19 @@
     "icon_id": 20013,
     "skill_category": 5
   },
+  "100341": {
+    "name": "Now We're Cruisin'!",
+    "rarity": 5,
+    "group_id": 10034,
+    "grade_value": 340,
+    "need_skill_point": 0,
+    "disable_singlemode": 1,
+    "tags": [
+      401
+    ],
+    "icon_id": 20013,
+    "skill_category": 5
+  },
   "100351": {
     "name": "Our Ticket to Win!",
     "rarity": 4,
@@ -720,6 +733,19 @@
     "name": "Genius x Bakushin = Victory",
     "rarity": 4,
     "group_id": 10041,
+    "grade_value": 340,
+    "need_skill_point": 0,
+    "disable_singlemode": 1,
+    "tags": [
+      401
+    ],
+    "icon_id": 20013,
+    "skill_category": 5
+  },
+  "100441": {
+    "name": "Victory Belongs to Me—Strelitzia! ☆",
+    "rarity": 5,
+    "group_id": 10044,
     "grade_value": 340,
     "need_skill_point": 0,
     "disable_singlemode": 1,
@@ -6154,6 +6180,22 @@
     "icon_id": 20041,
     "skill_category": 3
   },
+  "202001": {
+    "name": "Master of the Sands",
+    "rarity": 2,
+    "group_id": 20200,
+    "grade_value": 508,
+    "need_skill_point": 200,
+    "disable_singlemode": 1,
+    "tags": [
+      302,
+      401,
+      402,
+      502
+    ],
+    "icon_id": 20022,
+    "skill_category": 2
+  },
   "202002": {
     "name": "Familiar Ground",
     "rarity": 1,
@@ -6527,6 +6569,21 @@
     "icon_id": 20011,
     "skill_category": 2
   },
+  "202141": {
+    "name": "You're Not the Boss of Me!",
+    "rarity": 1,
+    "group_id": 20214,
+    "grade_value": -174,
+    "need_skill_point": 0,
+    "disable_singlemode": 1,
+    "tags": [
+      301,
+      405,
+      407
+    ],
+    "icon_id": 20064,
+    "skill_category": 0
+  },
   "202151": {
     "name": "Keep Going!",
     "rarity": 2,
@@ -6556,6 +6613,19 @@
     ],
     "icon_id": 20011,
     "skill_category": 2
+  },
+  "202161": {
+    "name": "Restraint",
+    "rarity": 1,
+    "group_id": 20216,
+    "grade_value": 217,
+    "need_skill_point": 160,
+    "disable_singlemode": 0,
+    "tags": [
+      405
+    ],
+    "icon_id": 10051,
+    "skill_category": 0
   },
   "210011": {
     "name": "Burning Spirit SPD",
@@ -7323,6 +7393,19 @@
     "icon_id": 20011,
     "skill_category": 5
   },
+  "900341": {
+    "name": "Now We're Cruisin'!",
+    "rarity": 1,
+    "group_id": 90034,
+    "grade_value": 180,
+    "need_skill_point": 200,
+    "disable_singlemode": 1,
+    "tags": [
+      401
+    ],
+    "icon_id": 20011,
+    "skill_category": 5
+  },
   "900351": {
     "name": "Our Ticket to Win!",
     "rarity": 1,
@@ -7393,6 +7476,19 @@
     "name": "Genius x Bakushin = Victory",
     "rarity": 1,
     "group_id": 90041,
+    "grade_value": 180,
+    "need_skill_point": 200,
+    "disable_singlemode": 1,
+    "tags": [
+      401
+    ],
+    "icon_id": 20011,
+    "skill_category": 5
+  },
+  "900441": {
+    "name": "Victory Belongs to Me—Strelitzia! ☆",
+    "rarity": 1,
+    "group_id": 90044,
     "grade_value": 180,
     "need_skill_point": 200,
     "disable_singlemode": 1,

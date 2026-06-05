@@ -614,6 +614,11 @@
     "rarity": "SR",
     "type": "Stamina"
   },
+  "20048": {
+    "name": "Oguri Cap",
+    "rarity": "SR",
+    "type": "Guts"
+  },
   "30001": {
     "name": "Special Week",
     "rarity": "SSR",
@@ -843,6 +848,11 @@
     "name": "Mejiro Ryan",
     "rarity": "SSR",
     "type": "Guts"
+  },
+  "30053": {
+    "name": "Taiki Shuttle",
+    "rarity": "SSR",
+    "type": "Speed"
   },
   "30054": {
     "name": "Nice Nature",
