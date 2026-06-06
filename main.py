@@ -307,6 +307,9 @@ def normalize_friend_cards(data):
         exclude_viewer_ids.append(viewer_id)
         card_data = support_by_key.get(key) or info.get('user_support_card') or {}
         support_info = support_map.get(str(support_card_id), {})
+        
+        print("HAS UTC:", "user_trained_chara" in info)
+        
         friends.append({
             'viewer_id': viewer_id,
             'name': info.get('name', ''),
@@ -317,7 +320,11 @@ def normalize_friend_cards(data):
             'exp': card_data.get('exp', info.get('user_support_card', {}).get('exp')),
             'limit_break_count': card_data.get('limit_break_count', info.get('user_support_card', {}).get('limit_break_count')),
             'favorite_flag': card_data.get('favorite_flag', 0),
-            'friend_state': info.get('friend_state', 0)
+            'friend_state': info.get('friend_state', 0),
+            'parent_data': info.get('user_trained_chara', {}),
+            'trained_chara_id': info.get('user_trained_chara', {}).get('trained_chara_id'),
+            'parent_viewer_id': info.get('viewer_id')
+            
         })
     return friends, exclude_viewer_ids, source
 
@@ -649,6 +656,10 @@ class StartCareerRequest(BaseModel):
     friend_card_id: int
     parent_id_1: int
     parent_id_2: int
+
+    rental_viewer_id: int = 0
+    rental_trained_chara_id: int = 0
+
     scenario_id: int = 4
     deck_id: int = 1
     use_tp: int = 30
@@ -665,6 +676,8 @@ class RunCareerRequest(BaseModel):
     friend_card_id: int = 0
     parent_id_1: int = 0
     parent_id_2: int = 0
+    rental_viewer_id: int = 0
+    rental_trained_chara_id: int = 0
     scenario_id: int = 0
     deck_id: int = 1
     use_tp: int = 30
@@ -767,6 +780,7 @@ async def get_skills():
     return {"success": True, "skills": current_skill_data}
 
 def start_career_from_request(req):
+    print("STEP 1")
     global active_account, active_dashboard_data
     if not active_client:
         return {"success": False, "detail": "Not logged in"}
@@ -782,6 +796,7 @@ def start_career_from_request(req):
         return {"success": False, "detail": selection_error}
 
     try:
+        print("STEP 2")
         res = active_client.read_info()
         data = res.get('data', {})
         active_client.refresh_cached_account_state(data)
@@ -825,11 +840,23 @@ def start_career_from_request(req):
     succession_rank_point = selected_succession_rank_point(req)
 
     try:
+        print("STEP 3A")
         active_client.pre_single_mode([req.friend_viewer_id] if req.friend_viewer_id else [])
-        dna_sleep(0.5, 1.5)
-    except Exception:
-        pass
 
+        print("STEP 3B")
+        dna_sleep(0.5, 1.5)
+
+        print("STEP 3C")
+    except Exception as e:
+        print("PRE_SINGLE_MODE ERROR:", e)
+
+    
+    print(
+        "RENTAL:",
+        req.rental_viewer_id,
+        req.rental_trained_chara_id
+    )
+    print("STEP 4")
     result = active_client.start_career(
         card_id=req.card_id,
         support_card_ids=req.support_card_ids,
@@ -837,6 +864,10 @@ def start_career_from_request(req):
         friend_card_id=req.friend_card_id,
         parent_id_1=req.parent_id_1,
         parent_id_2=req.parent_id_2,
+
+        rental_viewer_id=req.rental_viewer_id,
+        rental_trained_chara_id=req.rental_trained_chara_id,
+
         scenario_id=req.scenario_id,
         deck_id=req.deck_id,
         use_tp=req.use_tp,
@@ -848,6 +879,7 @@ def start_career_from_request(req):
         is_boost=req.is_boost,
         boost_story_event_id=req.boost_story_event_id
     )
+    print("STEP 5")
     return {"success": True, "result": result}
 
 def apply_career_result(result):
@@ -1060,7 +1092,40 @@ async def login(req: LoginRequest):
                 'rank_score': chara.get('rank_score', 0)
             }
 
-                
+        friend_support_data = d.get('friend_support_card_data', {})
+
+        for info in friend_support_data.get('summary_user_info_array', []):
+            print("FOUND FRIEND PARENT:", info.get('name'))
+            utc = info.get('user_trained_chara')
+            if not utc:
+                continue
+
+            cid = str(utc.get('card_id', 0))
+
+            parents.append({
+                'instance_id': utc.get('trained_chara_id'),
+                'card_id': cid,
+                'name': f"[FRIEND] {info.get('name', 'Unknown')}",
+                'rank': utc.get('rank', 0),
+                'tree': {
+                    "self": {
+                        "card_id": cid,
+                            "name": info.get('name', 'Unknown'),
+                            "factors": [],
+                            "wins": get_win_summary([])
+                    },
+                    "p1": {"card_id": 0, "name": "", "factors": [], "wins": get_win_summary([])},
+                    "p2": {"card_id": 0, "name": "", "factors": [], "wins": get_win_summary([])},
+                    "gp1": {"card_id": 0, "name": "", "factors": [], "wins": get_win_summary([])},
+                    "gp2": {"card_id": 0, "name": "", "factors": [], "wins": get_win_summary([])},
+                    "gp3": {"card_id": 0, "name": "", "factors": [], "wins": get_win_summary([])},
+                    "gp4": {"card_id": 0, "name": "", "factors": [], "wins": get_win_summary([])}
+            }
+        })
+
+        print(f"LOCAL PARENTS: {len(trained_chara_list)}")
+        print(f"TOTAL PARENTS: {len(parents)}")
+        
         active_dashboard_data = {
             "success": True,
             "account": account,
@@ -1305,6 +1370,11 @@ async def get_friend_list(req: FriendListRequest):
     try:
         result = active_client.pre_single_mode(req.exclude_viewer_ids)
         data = result.get('data', {})
+
+        import json
+        with open("debug_pre_single_mode.json", "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+
         update_start_state(data)
         friends, exclude_viewer_ids, source = normalize_friend_cards(data)
 
@@ -1319,6 +1389,7 @@ async def get_friend_list(req: FriendListRequest):
             "exclude_viewer_ids": exclude_viewer_ids,
             "source": source
         }
+    
     except Exception as e:
         return {"success": False, "detail": str(e)}
 

@@ -274,7 +274,19 @@ def get_hwid(seed_string="default"):
     }
 
 def check_deps():
-    if not shutil.which('node'): raise Exception('node missing')
+    import sys
+
+    node_path = shutil.which('node')
+
+    print("=" * 60)
+    print("PYTHON:", sys.executable)
+    print("NODE:", node_path)
+    print("PATH:", os.environ.get("PATH", ""))
+    print("=" * 60)
+
+    if not node_path:
+        raise Exception('node missing')
+
     if not os.path.exists(os.path.join(DIR, 'node_modules')):
         subprocess.run(['npm', 'install', '--silent'], check=True, cwd=DIR)
 

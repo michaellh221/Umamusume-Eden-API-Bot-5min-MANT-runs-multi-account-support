@@ -15,7 +15,7 @@ const state = {
     scenarioType: "Mant",
     burnClocks: false,
     displayedClocksUsed: 0,
-    devEnabled: false,
+    devEnabled: true,
     consecutiveRunnerFails: 0
 };
 const els = {
@@ -736,7 +736,7 @@ const els = {
             19: 'UG', 20: 'UF', 21: 'UE', 22: 'UD'
         };
         let dashData = null;
-        const selection = { deck: null, friend: null, trainee: null, veterans: [] };
+        const selection = { deck: null, friend: null, trainee: null, veterans: [], rentalParent: null };
 
         async function syncSelectionToServer() {
             try {
@@ -1768,6 +1768,7 @@ const els = {
             const friends = (dashData && dashData.friends) || [];
             clearInvalidFriendSelection();
             const visibleFriends = getVisibleFriends();
+            console.log("Friend test:", visibleFriends[0]);
             if (dashData) dashData.visibleFriends = visibleFriends;
 
             if (state.pendingFriendSelection) {
@@ -1854,6 +1855,13 @@ const els = {
                     const already = selection.friend && friendKey(selection.friend) === friendKey(friend);
                     document.querySelectorAll('#friend-grid .grid-card').forEach(c => c.classList.remove('selected'));
                     selection.friend = already ? null : friend;
+                    selection.rentalParent = already ? null : friend;
+                    console.log("Rental selected:", selection.rentalParent);
+                    console.log("Parent data:", selection.rentalParent?.parent_data);
+                    console.log("BODY RENTAL",
+                        selection.friend?.parent_data?.viewer_id,
+                        selection.friend?.parent_data?.trained_chara_id
+                    );
                     if (!already) el.classList.add('selected');
                     renderTeamPanel();
                 });
@@ -1882,6 +1890,8 @@ const els = {
                 friend_card_id: Number(selection.friend.support_card_id),
                 parent_id_1: Number(selection.veterans[0].instance_id),
                 parent_id_2: Number(selection.veterans[1].instance_id),
+                rental_viewer_id: Number(selection.friend?.parent_data?.viewer_id || 0),
+                rental_trained_chara_id: Number(selection.friend?.parent_data?.trained_chara_id || 0),
                 deck_id: Number(selection.deck.id),
                 scenario_id: 4,
                 use_tp: 30,
@@ -1895,6 +1905,7 @@ const els = {
                 dev_mode: state.devEnabled
             };
             try {
+                console.log("START BODY", body);
                 const data = await apiJson('/api/career/run', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
