@@ -44,7 +44,8 @@
                     <div class="control-btns">
                         <button id="tempt-fate-btn" class="btn btn-sm turn-delay-button" type="button">TEMPT FATE</button>
                         <button id="burn-clocks-btn" class="btn btn-sm turn-delay-button" type="button">BURN CLOCKS: OFF</button>
-                        <button id="dev-career-btn" class="btn btn-sm turn-delay-button" type="button">DEV</button>
+                        <button id="dev-career-btn" class="btn btn-sm turn-delay-button" type="button">LOOP: OFF</button>
+                        <button id="careers-limit-btn" class="btn btn-sm turn-delay-button" type="button" title="Stop loop after N careers (0 = infinite)">STOP: ∞</button>
                     </div>
                 </div>
             </div>
@@ -79,159 +80,306 @@
                 </div>
             </div>
             <div id="dashboard-view" class="dashboard-container">
-                <div class="split-left" id="setup-panel">
-                    <div class="panel-header">
-                        <span class="panel-header-title">SETUP</span>
-                    </div>
-                    <div class="panel-body">
-                        <div class="team-slots">
-                            <div class="team-item" id="team-slot-deck">
-                                <span class="team-item-role">Deck</span>
-                                <span class="team-item-empty">select a deck</span>
+
+                <!-- ── Mode bar ── -->
+                <div class="mode-bar">
+                    <button class="mode-btn is-active" data-mode="setup">SETUP</button>
+                    <button class="mode-btn" data-mode="diagnostics">MONITOR</button>
+                </div>
+
+                <!-- ── SETUP mode ── -->
+                <div class="mode-pane is-active" id="mode-setup">
+                    <div class="split-left" id="setup-panel">
+                        <div class="panel-header">
+                            <span class="panel-header-title">SETUP</span>
+                        </div>
+                        <div class="panel-body">
+                            <div class="team-slots">
+                                <div class="team-item" id="team-slot-deck">
+                                    <span class="team-item-role">Deck</span>
+                                    <span class="team-item-empty">select a deck</span>
+                                </div>
+                                <div class="team-item" id="team-slot-friend">
+                                    <span class="team-item-role">Friend</span>
+                                    <span class="team-item-empty">select a friend support</span>
+                                </div>
+                                <div class="team-item" id="team-slot-trainee">
+                                    <span class="team-item-role">Trainee</span>
+                                    <span class="team-item-empty">select a trainee</span>
+                                </div>
+                                <div class="team-item" id="team-slot-vet1">
+                                    <span class="team-item-role">Parent 1</span>
+                                    <span class="team-item-empty">select a parent</span>
+                                </div>
+                                <div class="team-item" id="team-slot-vet2">
+                                    <span class="team-item-role">Parent 2</span>
+                                    <span class="team-item-empty">select a parent</span>
+                                </div>
                             </div>
-                            <div class="team-item" id="team-slot-friend">
-                                <span class="team-item-role">Friend</span>
-                                <span class="team-item-empty">select a friend support</span>
-                            </div>
-                            <div class="team-item" id="team-slot-trainee">
-                                <span class="team-item-role">Trainee</span>
-                                <span class="team-item-empty">select a trainee</span>
-                            </div>
-                            <div class="team-item" id="team-slot-vet1">
-                                <span class="team-item-role">Parent 1</span>
-                                <span class="team-item-empty">select a parent</span>
-                            </div>
-                            <div class="team-item" id="team-slot-vet2">
-                                <span class="team-item-role">Parent 2</span>
-                                <span class="team-item-empty">select a parent</span>
+                            <div class="start-panel">
+                                <button id="start-career-btn" class="btn btn-primary" type="button" disabled>RUN CAREER</button>
+                                <div id="start-status" class="start-status"></div>
                             </div>
                         </div>
+                    </div>
+                    <div class="split-right" id="content-panel">
+                        <div class="panel-tabs">
+                            <button class="panel-tab is-active" data-tab="tab-preset">PRESET</button>
+                            <button class="panel-tab" data-tab="tab-deck">DECK</button>
+                            <button class="panel-tab" data-tab="tab-parents">PARENTS</button>
+                            <button class="panel-tab" data-tab="tab-skills">SKILLS</button>
+                            <button class="panel-tab" data-tab="tab-stats">STATS</button>
+                        </div>
+                        <div class="panel-body">
 
-                        <section class="dashboard-section" id="preset-section">
-                            <h2 class="dashboard-section-title">PRESET CONFIGURATION</h2>
-                            <div class="master-data-panel">
-                                <label class="form-label" for="preset-select">ACTIVE PRESET</label>
-                                <div class="preset-control-row preset-control-row-actions">
-                                    <select id="preset-select" class="form-input master-data-input preset-input"></select>
-                                    <button id="preset-add-btn" class="btn btn-sm preset-action-btn" type="button">NEW</button>
-                                    <button id="preset-del-btn" class="btn btn-sm btn-danger preset-action-btn" type="button">DEL</button>
-                                </div>
-                                <div class="preset-control-row preset-control-grid">
-                                    <div class="preset-field">
-                                        <label class="form-label" for="preset-running-style">RUNNING STYLE</label>
-                                        <select id="preset-running-style" class="form-input master-data-input preset-input">
-                                            <option value="1">Front Runner</option>
-                                            <option value="2">Pace Chaser</option>
-                                            <option value="3">Late Surger</option>
-                                            <option value="4">End Closer</option>
-                                        </select>
-                                    </div>
-                                    <div class="preset-field">
-                                        <label class="form-label" for="preset-skill-threshold">MIN SKILL PT</label>
-                                        <input id="preset-skill-threshold" class="form-input master-data-input preset-input" type="number">
-                                    </div>
-                                </div>
-                                <button id="preset-edit-skills-btn" class="btn btn-sm preset-wide-btn" type="button">CONFIGURE SKILLS (PRIORITIES & BLACKLIST)</button>
-                            </div>
-                        </section>
-
-                        <section class="dashboard-section" id="master-data-section">
-                            <h2 class="dashboard-section-title">MASTER DATA</h2>
-                            <div class="master-data-panel">
-                                <label class="form-label" for="master-data-path">MASTER.MDB PATH</label>
-                                <div class="master-data-row">
-                                    <input id="master-data-path" class="form-input master-data-input" type="text" spellcheck="false">
-                                    <button id="master-data-save-btn" class="btn btn-sm" type="button">SAVE</button>
-                                </div>
-                                <div id="master-data-status" class="master-data-status"></div>
-                            </div>
-                        </section>
-
-                        <section class="dashboard-section" id="race-schedule-section">
-                            <h2 class="dashboard-section-title section-title-toggle" id="race-toggle">
-                                <span class="collapse-chevron" id="race-chevron">&#9658;</span>
-                                RACE SCHEDULE
-                            </h2>
-                            <div id="race-body" class="collapsible-body">
-                                <div id="race-slot-popup-overlay" class="race-slot-popup-overlay" style="display: none;">
-                                    <div class="race-slot-popup">
-                                        <div class="race-slot-popup-header">
-                                            <div id="race-slot-popup-title" class="race-slot-popup-title">Select Race</div>
-                                            <button id="race-slot-popup-close" class="race-slot-popup-close">&times;</button>
+                            <!-- ── PRESET TAB ── -->
+                            <div class="tab-pane is-active" id="tab-preset">
+                                <section class="dashboard-section" id="preset-section">
+                                    <h2 class="dashboard-section-title">PRESET CONFIGURATION</h2>
+                                    <div class="master-data-panel">
+                                        <label class="form-label" for="preset-select">ACTIVE PRESET</label>
+                                        <div class="preset-control-row preset-control-row-actions">
+                                            <select id="preset-select" class="form-input master-data-input preset-input"></select>
+                                            <button id="preset-add-btn" class="btn btn-sm preset-action-btn" type="button">NEW</button>
+                                            <button id="preset-del-btn" class="btn btn-sm btn-danger preset-action-btn" type="button">DEL</button>
                                         </div>
-                                        <div id="race-slot-popup-body" class="race-slot-popup-body"></div>
+                                        <div class="preset-control-row preset-control-grid">
+                                            <div class="preset-field">
+                                                <label class="form-label" for="preset-running-style">RUNNING STYLE</label>
+                                                <select id="preset-running-style" class="form-input master-data-input preset-input">
+                                                    <option value="1">Front Runner</option>
+                                                    <option value="2">Pace Chaser</option>
+                                                    <option value="3">Late Surger</option>
+                                                    <option value="4">End Closer</option>
+                                                </select>
+                                            </div>
+                                            <div class="preset-field">
+                                                <label class="form-label" for="preset-target-distance">DISTANCE</label>
+                                                <select id="preset-target-distance" class="form-input master-data-input preset-input">
+                                                    <option value="0">Any</option>
+                                                    <option value="1">Short</option>
+                                                    <option value="2">Mile</option>
+                                                    <option value="3">Medium</option>
+                                                    <option value="4">Long</option>
+                                                </select>
+                                            </div>
+                                            <div class="preset-field">
+                                                <label class="form-label" for="preset-skill-threshold">MIN SKILL PT</label>
+                                                <input id="preset-skill-threshold" class="form-input master-data-input preset-input" type="number">
+                                            </div>
+                                            <div class="preset-field" style="justify-content:flex-end;align-items:flex-end;display:flex;">
+                                                <label style="display:flex;align-items:center;gap:0.4rem;cursor:pointer;font-size:0.75rem;font-weight:600;letter-spacing:0.05em;color:var(--text-secondary,#aaa);">
+                                                    <input id="preset-auto-buy-override" type="checkbox" style="width:1rem;height:1rem;cursor:pointer;">
+                                                    AUTO-BUY OVERRIDES SP THRESHOLD
+                                                </label>
+                                            </div>
+                                        </div>
                                     </div>
-                                </div>
-                                <div class="race-options-content" id="race-options-content"></div>
+                                </section>
+                                <section class="dashboard-section" id="master-data-section">
+                                    <h2 class="dashboard-section-title">MASTER DATA</h2>
+                                    <div class="master-data-panel">
+                                        <label class="form-label" for="master-data-path">MASTER.MDB PATH</label>
+                                        <div class="master-data-row">
+                                            <input id="master-data-path" class="form-input master-data-input" type="text" spellcheck="false">
+                                            <button id="master-data-save-btn" class="btn btn-sm" type="button">SAVE</button>
+                                        </div>
+                                        <div id="master-data-status" class="master-data-status"></div>
+                                    </div>
+                                </section>
+                                <section class="dashboard-section" id="race-schedule-section">
+                                    <h2 class="dashboard-section-title section-title-toggle" id="race-toggle">
+                                        <span class="collapse-chevron" id="race-chevron">&#9658;</span>
+                                        RACE SCHEDULE
+                                    </h2>
+                                    <div id="race-body" class="collapsible-body">
+                                        <div id="race-slot-popup-overlay" class="race-slot-popup-overlay" style="display: none;">
+                                            <div class="race-slot-popup">
+                                                <div class="race-slot-popup-header">
+                                                    <div id="race-slot-popup-title" class="race-slot-popup-title">Select Race</div>
+                                                    <button id="race-slot-popup-close" class="race-slot-popup-close">&times;</button>
+                                                </div>
+                                                <div id="race-slot-popup-body" class="race-slot-popup-body"></div>
+                                            </div>
+                                        </div>
+                                        <div class="race-options-content" id="race-options-content"></div>
+                                    </div>
+                                </section>
                             </div>
-                        </section>
 
-                        <div class="start-panel">
-                            <button id="start-career-btn" class="btn btn-primary" type="button" disabled>RUN CAREER</button>
-                            <div id="start-status" class="start-status"></div>
+                            <!-- ── DECK TAB ── -->
+                            <div class="tab-pane" id="tab-deck">
+                                <section class="dashboard-section">
+                                    <h2 class="dashboard-section-title section-title-toggle" id="decks-toggle">
+                                        <span class="collapse-chevron expanded" id="decks-chevron">&#9658;</span>
+                                        DECKS
+                                    </h2>
+                                    <div id="decks-body" class="collapsible-body expanded">
+                                        <div id="deck-list"></div>
+                                    </div>
+                                </section>
+                                <section class="dashboard-section">
+                                    <div style="display:flex;align-items:center;gap:0.75rem;">
+                                        <h2 class="dashboard-section-title" style="flex:1;margin:0;">BUILD DECK <span id="deck-builder-count" style="font-size:0.8rem;opacity:0.7;">(0/6 cards)</span></h2>
+                                        <button id="deck-builder-clear-btn" class="btn btn-sm" type="button" style="flex-shrink:0;">CLEAR</button>
+                                        <button id="deck-builder-save-btn" class="btn btn-sm btn-primary" type="button" style="flex-shrink:0;" disabled>SAVE TO SLOT 1</button>
+                                    </div>
+                                    <div id="deck-builder-slots" style="display:flex;gap:0.5rem;flex-wrap:wrap;padding:0.75rem 0 0.25rem;">
+                                    </div>
+                                    <div id="deck-builder-status" style="font-size:0.78rem;color:#a1a1aa;padding:0.25rem 0 0.5rem;min-height:1.2em;"></div>
+                                </section>
+                                <section class="dashboard-section">
+                                    <h2 class="dashboard-section-title section-title-toggle" id="cards-toggle">
+                                        <span class="collapse-chevron expanded" id="cards-chevron">&#9658;</span>
+                                        OWNED CARDS <span id="card-count"></span>
+                                    </h2>
+                                    <div id="card-grid-wrapper" class="collapsible-body expanded">
+                                        <div id="card-grid" class="data-grid"></div>
+                                    </div>
+                                </section>
+                                <section class="dashboard-section">
+                                    <h2 class="dashboard-section-title section-title-toggle" id="friends-toggle">
+                                        <span class="collapse-chevron expanded" id="friends-chevron">&#9658;</span>
+                                        FRIEND SUPPORTS <span id="friend-count"></span>
+                                        <button id="friend-refresh-btn" class="btn btn-sm section-title-action" type="button">REFRESH</button>
+                                    </h2>
+                                    <div id="friends-body" class="collapsible-body expanded">
+                                        <div class="friend-toolbar">
+                                            <div id="friend-status" class="friend-status">Loading friends...</div>
+                                        </div>
+                                        <div id="friend-grid" class="data-grid"></div>
+                                    </div>
+                                </section>
+                            </div>
+
+                            <!-- ── PARENTS TAB ── -->
+                            <div class="tab-pane" id="tab-parents">
+                                <section class="dashboard-section">
+                                    <h2 class="dashboard-section-title section-title-toggle" id="trainees-toggle">
+                                        <span class="collapse-chevron expanded" id="trainees-chevron">&#9658;</span>
+                                        TRAINEES <span id="uma-count"></span>
+                                    </h2>
+                                    <div id="trainees-body" class="collapsible-body expanded">
+                                        <div id="uma-grid" class="data-grid"></div>
+                                    </div>
+                                </section>
+                                <section class="dashboard-section">
+                                    <h2 class="dashboard-section-title section-title-toggle" id="parents-toggle">
+                                        <span class="collapse-chevron expanded" id="parents-chevron">&#9658;</span>
+                                        PARENTS <span id="parent-count"></span>
+                                    </h2>
+                                    <div id="parents-body" class="collapsible-body expanded">
+                                        <div id="parent-grid" class="data-grid"></div>
+                                    </div>
+                                </section>
+                                <section class="dashboard-section">
+                                    <div style="display:flex;align-items:center;gap:0.75rem;">
+                                        <h2 class="dashboard-section-title section-title-toggle" id="follow-parents-toggle" style="flex:1;margin:0;">
+                                            <span class="collapse-chevron" id="follow-parents-chevron">&#9658;</span>
+                                            FOLLOWED PLAYERS <span id="follow-parent-count"></span>
+                                        </h2>
+                                        <button id="follow-parent-load-btn" class="btn btn-sm" style="flex-shrink:0;">LOAD</button>
+                                    </div>
+                                    <div id="follow-parents-body" class="collapsible-body">
+                                        <div id="follow-parent-status" style="padding:0.5rem 1rem;font-size:0.8rem;color:#a1a1aa;"></div>
+                                        <div id="follow-parent-grid" class="data-grid"></div>
+                                    </div>
+                                </section>
+                            </div>
+
+                            <!-- ── SKILLS TAB ── -->
+                            <div class="tab-pane" id="tab-skills">
+                                <section class="dashboard-section">
+                                    <h2 class="dashboard-section-title">SKILLS & STATS</h2>
+                                    <div class="master-data-panel">
+                                        <button id="preset-edit-skills-btn" class="btn btn-sm preset-wide-btn" type="button">CONFIGURE SKILLS (PRIORITIES & BLACKLIST)</button>
+                                        <div class="preset-field" style="margin-top:0.75rem;">
+                                            <label class="form-label">STAT PRIORITY <span style="font-size:0.7rem;opacity:0.6;">(drag to reorder — top = highest priority)</span></label>
+                                            <div id="stat-priority-list" style="display:flex;flex-direction:column;gap:0.3rem;margin-top:0.35rem;"></div>
+                                        </div>
+                                    </div>
+                                </section>
+                            </div>
+
+                            <!-- ── STATS TAB ── -->
+                            <div class="tab-pane" id="tab-stats">
+                                <section class="dashboard-section">
+                                    <h2 class="dashboard-section-title">FAN STATS</h2>
+                                    <div id="fan-stats-panel"></div>
+                                </section>
+                            </div>
+
                         </div>
                     </div>
-                </div>
-                <div class="split-right" id="content-panel">
-                    <div class="panel-header">
-                        <span class="panel-header-title">LIBRARY</span>
+                    <div class="split-gutter-controls" aria-label="Panel controls">
+                        <button class="panel-collapse-btn panel-collapse-btn-left" id="setup-collapse-btn" type="button" data-panel-label="Setup" title="Collapse setup" aria-label="Collapse setup"></button>
+                        <button class="panel-collapse-btn panel-collapse-btn-right" id="content-collapse-btn" type="button" data-panel-label="Library" title="Collapse library" aria-label="Collapse library"></button>
                     </div>
-                    <div class="panel-body">
-                        <section class="dashboard-section">
-                            <h2 class="dashboard-section-title section-title-toggle" id="decks-toggle">
-                                <span class="collapse-chevron expanded" id="decks-chevron">&#9658;</span>
-                                DECKS
-                            </h2>
-                            <div id="decks-body" class="collapsible-body expanded">
-                                <div id="deck-list"></div>
-                            </div>
-                        </section>
-                        <section class="dashboard-section">
-                            <h2 class="dashboard-section-title section-title-toggle" id="friends-toggle">
-                                <span class="collapse-chevron expanded" id="friends-chevron">&#9658;</span>
-                                FRIEND SUPPORTS <span id="friend-count"></span>
-                                <button id="friend-refresh-btn" class="btn btn-sm section-title-action" type="button">REFRESH</button>
-                            </h2>
-                            <div id="friends-body" class="collapsible-body expanded">
-                                <div class="friend-toolbar">
-                                    <div id="friend-status" class="friend-status">Loading friends...</div>
+                </div>
+
+                <!-- ── DIAGNOSTICS mode ── -->
+                <div class="mode-pane" id="mode-diagnostics">
+                    <div class="diag-layout">
+                        <!-- Left column -->
+                        <div class="diag-left">
+                            <!-- Career card -->
+                            <div class="diag-card" id="diag-career-card">
+                                <div class="diag-card-title-row">
+                                    <span class="diag-card-title">CAREER</span>
+                                    <span id="diag-running-badge" class="diag-running-badge" style="display:none">RUNNING</span>
                                 </div>
-                                <div id="friend-grid" class="data-grid"></div>
+                                <div id="diag-career-body" class="diag-career-body">
+                                    <div class="diag-career-empty">No active career</div>
+                                </div>
                             </div>
-                        </section>
-                        <section class="dashboard-section">
-                            <h2 class="dashboard-section-title section-title-toggle" id="trainees-toggle">
-                                <span class="collapse-chevron expanded" id="trainees-chevron">&#9658;</span>
-                                TRAINEES <span id="uma-count"></span>
-                            </h2>
-                            <div id="trainees-body" class="collapsible-body expanded">
-                                <div id="uma-grid" class="data-grid"></div>
+                            <!-- Lifetime metrics -->
+                            <div class="diag-card" id="diag-metrics-card">
+                                <div class="diag-card-title-row">
+                                    <span class="diag-card-title">LIFETIME METRICS</span>
+                                    <span class="diag-badge-bot">BOT</span>
+                                </div>
+                                <div class="diag-metric-row">
+                                    <span class="diag-metric-label">TOTAL FAN GAIN</span>
+                                    <span class="diag-metric-value" id="diag-total-fans">—</span>
+                                </div>
+                                <div class="diag-metric-row">
+                                    <span class="diag-metric-label">CURRENT RUN FANS</span>
+                                    <span class="diag-metric-value" id="diag-current-fans">—</span>
+                                </div>
+                                <div class="diag-metric-row">
+                                    <span class="diag-metric-label">RUNTIME</span>
+                                    <span class="diag-metric-value" id="diag-runtime">—</span>
+                                </div>
+                                <div class="diag-metric-row">
+                                    <span class="diag-metric-label">CAREERS DONE</span>
+                                    <span class="diag-metric-value" id="diag-careers-done">—</span>
+                                </div>
                             </div>
-                        </section>
-                        <section class="dashboard-section">
-                            <h2 class="dashboard-section-title section-title-toggle" id="parents-toggle">
-                                <span class="collapse-chevron expanded" id="parents-chevron">&#9658;</span>
-                                PARENTS <span id="parent-count"></span>
-                            </h2>
-                            <div id="parents-body" class="collapsible-body expanded">
-                                <div id="parent-grid" class="data-grid"></div>
+                            <!-- Club fan tracker -->
+                            <div class="diag-card" id="diag-club-card">
+                                <div class="diag-card-title">CLUB</div>
+                                <div id="diag-club-display" class="diag-club-display">—</div>
                             </div>
-                        </section>
-                        <section class="dashboard-section">
-                            <h2 class="dashboard-section-title section-title-toggle" id="cards-toggle">
-                                <span class="collapse-chevron" id="cards-chevron">&#9658;</span>
-                                OWNED CARDS <span id="card-count"></span>
-                            </h2>
-                            <div id="card-grid-wrapper" class="collapsible-body">
-                                <div id="card-grid" class="data-grid"></div>
+                        </div>
+                        <!-- Right column: action log -->
+                        <div class="diag-right">
+                            <div class="diag-log-header">
+                                <span class="diag-card-title">ACTION LOG</span>
+                                <span id="diag-turn-badge" class="diag-turn-badge">— TURNS</span>
                             </div>
-                        </section>
+                            <div id="diag-action-log" class="diag-action-log"></div>
+                        </div>
+                    </div>
+                    <!-- Footer controls -->
+                    <div class="diag-footer">
+                        <button id="diag-resume-btn" class="btn btn-primary diag-footer-btn" type="button">RESUME CAREER</button>
+                        <button id="diag-stop-btn" class="btn diag-footer-btn" type="button">STOP</button>
+                        <button id="diag-give-up-btn" class="btn diag-footer-btn btn-danger" type="button">GIVE UP</button>
+                        <button id="diag-sync-btn" class="btn diag-footer-btn" type="button">SYNC</button>
+                        <span id="diag-footer-label" class="diag-footer-label">—</span>
                     </div>
                 </div>
-                <div class="split-gutter-controls" aria-label="Panel controls">
-                    <button class="panel-collapse-btn panel-collapse-btn-left" id="setup-collapse-btn" type="button" data-panel-label="Setup" title="Collapse setup" aria-label="Collapse setup"></button>
-                    <button class="panel-collapse-btn panel-collapse-btn-right" id="content-collapse-btn" type="button" data-panel-label="Library" title="Collapse library" aria-label="Collapse library"></button>
-                </div>
+
             </div>
         </main>
         <div id="career-modal" class="modal-backdrop">
@@ -266,6 +414,13 @@
                             <button id="skill-clear-blacklist-btn" class="btn btn-sm btn-danger-soft skill-editor-action">CLEAR</button>
                         </div>
                         <div id="skill-blacklist-container" class="skill-blacklist-zone"></div>
+
+                        <div class="skill-blacklist-header" style="margin-top:0.75rem;">
+                            <div class="skill-editor-section-title" style="color:#f59e0b;">MANDATORY</div>
+                            <button id="skill-clear-mandatory-btn" class="btn btn-sm skill-editor-action" style="border-color:#f59e0b44;color:#f59e0b;">CLEAR</button>
+                        </div>
+                        <div style="font-size:0.7rem;color:var(--text-secondary,#aaa);padding:0.2rem 0.1rem 0.4rem;line-height:1.4;">Always bought immediately, regardless of SP threshold or tier settings.</div>
+                        <div id="skill-mandatory-container" class="skill-blacklist-zone"></div>
                     </div>
                 </div>
 
@@ -285,7 +440,6 @@
             </div>
         </div>
     </div>
-    <script src="app.js?v=11"></script>
+    <script src="app.js?v=16"></script>
 </body>
 </html>
-

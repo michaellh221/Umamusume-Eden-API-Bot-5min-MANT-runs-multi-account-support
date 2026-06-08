@@ -1,3 +1,44 @@
+"""
+main.py
+=======
+FastAPI backend for the Umamusume Sweepy bot web UI.
+
+Entry point: run with  python main.py  (launches uvicorn on 127.0.0.1:1616).
+Open http://127.0.0.1:1616 in your browser to access the UI.
+
+Architecture overview
+---------------------
+- The server starts by injecting a Frida hook into the running game process to
+  capture fresh auth credentials (auth_key, viewer_id, udid, etc.).  These are
+  stored in  data/accounts/<account>.json  and used to build a UmaClient.
+- After login the dashboard is loaded: umas, support cards, decks, parents, and
+  friend supports are all fetched and cached in global state.
+- The UI (public/) is a single-page app that polls the REST API for live status.
+- Career runs are executed either via CareerRunner (background thread, standard
+  mode) or manage_career_loop (manual LOOP: ON dev mode).
+
+Global state
+------------
+  active_client          – the authenticated UmaClient instance
+  active_account         – dict with account/career summary shown in the UI
+  active_dashboard_data  – full snapshot returned to the UI on /api/status
+  active_start_state     – TP / money / succession rank info refreshed pre-start
+
+Fan stats
+---------
+  Stored in  data/fan_stats.json.  Appended after each completed career.
+  Exposed via  GET /api/stats/fans.
+
+Extending / forking notes
+--------------------------
+- To add a new API endpoint, add a FastAPI route function below the relevant
+  section comment.
+- To add a new account field, update get_account_status() and the UI.
+- The frida-based auth refresh (refresh_auth_before_serving) requires the game
+  to be running.  To skip it during development, stub it out and supply a
+  pre-saved config in data/accounts/.
+"""
+
 import os
 import json
 import re
@@ -27,6 +68,9 @@ from career_bot.delay import GateKeeper, dna_sleep, dna_uniform
 PROCESS_NAME = "UmamusumePrettyDerby.exe"
 APP_ID = "3224770"
 
+# ── Frida JS injection ─────────────────────────────────────────────────────
+# Injected into the game process at startup to intercept TLS traffic and
+# capture auth credentials (auth_key, viewer_id, udid) from live requests.
 JS_CODE = r'''
 'use strict';
 (function() {
@@ -193,7 +237,8 @@ active_selection = {
     "deck": None,
     "friend": None,
     "trainee": None,
-    "veterans": []
+    "veterans": [],
+    "guestParent": None
 }
 turn_delay_min_sec = 2.5
 turn_delay_max_sec = 5.0
@@ -202,6 +247,92 @@ turn_delay_restore_max_sec = 5.0
 turn_delay_disabled = False
 preset_store = PresetStore(DIR)
 career_runner = CareerRunner(DIR)
+
+# ---------------------------------------------------------------------------
+# Fan stats – persistent per-career tracking
+# ---------------------------------------------------------------------------
+import threading as _threading_mod
+from datetime import date as _date_mod, datetime as _dt_mod
+
+FAN_STATS_PATH = None   # resolved after base_dir is known
+AUTH_CACHE_PATH = None  # resolved after base_dir is known
+
+def _auth_cache_file():
+    global AUTH_CACHE_PATH
+    if AUTH_CACHE_PATH is None:
+        AUTH_CACHE_PATH = base_dir / "uma_runtime" / "auth_cache.json"
+    return AUTH_CACHE_PATH
+
+def _save_auth_cache(cfg):
+    """Persist Frida-captured auth config to disk so subsequent logins skip Steam API."""
+    try:
+        path = _auth_cache_file()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        # Save everything except the password seed (re-supplied by user at login)
+        saveable = {k: v for k, v in cfg.items() if k != 'steam_password_seed'}
+        with open(path, 'w') as f:
+            json.dump(saveable, f, indent=2)
+    except Exception as e:
+        print(f"[auth_cache] save error: {e}")
+
+def _load_auth_cache():
+    """Load cached auth config. Returns dict or {} if missing/invalid."""
+    try:
+        path = _auth_cache_file()
+        if path.exists():
+            with open(path) as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return {}
+_fan_stats_lock = _threading_mod.Lock()
+_fan_stats = {"careers": []}
+_session_fans_gained = 0
+
+def _fan_stats_file():
+    global FAN_STATS_PATH
+    if FAN_STATS_PATH is None:
+        FAN_STATS_PATH = base_dir / "fan_stats.json"
+    return FAN_STATS_PATH
+
+def _load_fan_stats():
+    global _fan_stats
+    path = _fan_stats_file()
+    try:
+        if path.exists():
+            with open(path, "r", encoding="utf-8") as f:
+                _fan_stats = json.load(f)
+    except Exception as e:
+        print(f"fan_stats load error: {e}")
+
+def _save_fan_stats():
+    path = _fan_stats_file()
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(_fan_stats, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"fan_stats save error: {e}")
+
+def record_career_fans(card_id, fans_gained, final_fans, preset_name="", final_turn=0):
+    global _fan_stats, _session_fans_gained
+    chara_name = chara_map.get(str(card_id), f"Uma ({card_id})")
+    entry = {
+        "timestamp": _dt_mod.now().isoformat(timespec="seconds"),
+        "date": _date_mod.today().isoformat(),
+        "card_id": str(card_id),
+        "chara_name": chara_name,
+        "fans_gained": int(fans_gained),
+        "final_fans": int(final_fans),
+        "preset": preset_name,
+        "final_turn": int(final_turn),
+    }
+    with _fan_stats_lock:
+        _fan_stats.setdefault("careers", []).append(entry)
+        if len(_fan_stats["careers"]) > 500:
+            _fan_stats["careers"] = _fan_stats["careers"][-500:]
+        _session_fans_gained += int(fans_gained)
+        _save_fan_stats()
+# ---------------------------------------------------------------------------
 
 base_dir = Path(__file__).parent.absolute()
 master_data_startup_status = master_data.status(base_dir)
@@ -223,6 +354,8 @@ if chara_path.exists():
 if support_path.exists():
     with open(support_path, 'r', encoding='utf-8') as f:
         support_map = json.load(f)
+
+_load_fan_stats()
 
 def display_support_type(value):
     return {
@@ -249,7 +382,8 @@ def set_turn_delay(min_value, max_value, disabled=False):
         delay_module.TURN_DELAY_RESTORE_MAX = next_max
     delay_module.TURN_DELAY_MIN = next_min
     delay_module.TURN_DELAY_MAX = next_max
-    delay_module.GLOBAL_DELAYS_DISABLED = next_disabled
+    delay_module.GLOBAL_DELAYS_DISABLED = next_disabled  # only disables inter-turn wait
+    print(f"[delay] turn_delay={next_min:.1f}-{next_max:.1f}s disabled={next_disabled}")
     return get_turn_delay()
 
 def get_turn_delay():
@@ -263,6 +397,7 @@ def get_turn_delay():
         "disabled": getattr(delay_module, "GLOBAL_DELAYS_DISABLED", False)
     }
 
+# ── Helpers: state refresh ─────────────────────────────────────────────────
 def update_start_state(data):
     global active_start_state
     if not data:
@@ -273,7 +408,18 @@ def update_start_state(data):
     item_list = data.get('item_list') or data.get('user_item_array')
     if isinstance(item_list, list) and item_list:
         active_start_state['current_money'] = get_item_count(item_list, 59)
-        active_start_state['succession_rank_point'] = get_item_count(item_list, 75)
+        # Succession rank point: try several locations the game API uses.
+        # Check item_id=75 first (older clients), then top-level fields,
+        # then user_info sub-dict.  Keep the best non-zero value found.
+        srp = get_item_count(item_list, 75)
+        if not srp:
+            srp = (data.get('succession_rank_point')
+                   or data.get('user_succession_rank_point')
+                   or (data.get('user_info') or {}).get('succession_rank_point')
+                   or 0)
+        if srp:  # only overwrite if we found a real value
+            active_start_state['succession_rank_point'] = int(srp)
+        print(f"[start_state] succession_rank_point={active_start_state.get('succession_rank_point', 0)}")
 
 
 def normalize_friend_cards(data):
@@ -308,8 +454,6 @@ def normalize_friend_cards(data):
         card_data = support_by_key.get(key) or info.get('user_support_card') or {}
         support_info = support_map.get(str(support_card_id), {})
         
-        print("HAS UTC:", "user_trained_chara" in info)
-        
         friends.append({
             'viewer_id': viewer_id,
             'name': info.get('name', ''),
@@ -333,6 +477,7 @@ def normalize_card_name(name):
     return re.sub(r'[^a-z0-9]+', '', re.sub(r'\([^)]*\)', '', str(name or '').lower()))
 
 
+# ── Career start: validation helpers ──────────────────────────────────────
 def validate_start_selection(req):
     support_ids = [int(card_id) for card_id in req.support_card_ids]
     friend_card_id = int(req.friend_card_id)
@@ -353,10 +498,21 @@ def validate_start_selection(req):
     if trainee_name and trainee_name == friend_name:
         return "Friend support card has same character as trainee"
 
+    # Character-level parent conflict check (covers all variants of the same character).
+    # Card IDs are 6-digit numbers where the first 4 digits identify the character:
+    # e.g. 100101 (Mihono Bourbon) and 100102 (Mihono Bourbon special) both map to chara 1001.
+    def card_chara_id(card_id):
+        return int(str(int(card_id))[:4]) if card_id else 0
+
+    trainee_chara_id = card_chara_id(req.card_id)
     parent1_cards = active_parent_cards.get(int(req.parent_id_1), [])
     parent2_cards = active_parent_cards.get(int(req.parent_id_2), [])
-    if parent1_cards and parent2_cards and int(req.card_id) in (parent1_cards[0], parent2_cards[0]):
-        return "Selected direct parent is same character as trainee"
+    for parent_card_id in filter(None, [
+        parent1_cards[0] if parent1_cards else None,
+        parent2_cards[0] if parent2_cards else None,
+    ]):
+        if card_chara_id(parent_card_id) == trainee_chara_id:
+            return "Selected parent is the same character (or variant) as the trainee"
 
     return None
 
@@ -538,6 +694,8 @@ def get_item_count(item_list, item_id):
     return 0
 
 
+# ── Dashboard / account status ─────────────────────────────────────────────
+# get_account_status() builds the normalized account dict shown in the UI.
 def get_account_status(data, career_data=None):
     tp_info = data.get('tp_info') or (active_client.tp_info if active_client else {})
     coin_info = data.get('coin_info') or (active_client.coin_info if active_client else {})
@@ -700,6 +858,10 @@ class SavePresetRequest(BaseModel):
 class DeletePresetByNameRequest(BaseModel):
     name: str
 
+class SaveDeckRequest(BaseModel):
+    deck_id: int = 1
+    card_ids: list
+
 class CareerActionRequest(BaseModel):
     command_type: int
     command_id: int
@@ -770,6 +932,34 @@ async def save_preset(req: SavePresetRequest):
 async def delete_preset(req: DeletePresetByNameRequest):
     return {"success": preset_store.delete(req.name)}
 
+@app.post("/api/deck/save")
+async def save_deck(req: SaveDeckRequest):
+    if not active_client:
+        return {"success": False, "detail": "Not logged in"}
+    if not req.card_ids or len(req.card_ids) != 5:
+        return {"success": False, "detail": "Exactly 5 cards required"}
+    try:
+        result = active_client.save_deck(req.deck_id, req.card_ids)
+        # Refresh the deck list in active_dashboard_data so UI stays in sync
+        updated_decks = result.get('data', {}).get('support_card_deck_array')
+        if updated_decks and active_dashboard_data:
+            deck_array = updated_decks
+            decks = []
+            for deck in deck_array:
+                cards = []
+                for cid in deck.get('support_card_id_array', []):
+                    sid = str(cid)
+                    info = support_map.get(sid)
+                    if info:
+                        cards.append({'id': sid, 'name': info['name'], 'rarity': info['rarity'], 'type': display_support_type(info['type'])})
+                    else:
+                        cards.append({'id': sid, 'name': f'Unknown ({sid})', 'rarity': '?', 'type': '?'})
+                decks.append({'id': deck.get('deck_id'), 'name': deck.get('name', f'Deck {deck.get("deck_id")}'), 'cards': cards})
+            active_dashboard_data['decks'] = decks
+        return {"success": True}
+    except Exception as e:
+        return {"success": False, "detail": str(e)}
+
 @app.get("/api/skills")
 async def get_skills():
     current_skill_data = {}
@@ -779,8 +969,8 @@ async def get_skills():
             current_skill_data = json.load(f)
     return {"success": True, "skills": current_skill_data}
 
+# ── Career start / resume ──────────────────────────────────────────────────
 def start_career_from_request(req):
-    print("STEP 1")
     global active_account, active_dashboard_data
     if not active_client:
         return {"success": False, "detail": "Not logged in"}
@@ -796,18 +986,21 @@ def start_career_from_request(req):
         return {"success": False, "detail": selection_error}
 
     try:
-        print("STEP 2")
         res = active_client.read_info()
         data = res.get('data', {})
         active_client.refresh_cached_account_state(data)
         update_start_state(data)
-        if active_account:
-            active_account = get_account_status(data)
-            if active_dashboard_data:
-                active_dashboard_data["account"] = active_account
+        # Log any succession-related keys so we can find the right field name
+        active_account = get_account_status(data)
+        if active_dashboard_data:
+            active_dashboard_data["account"] = active_account
     except Exception:
         pass
-        
+
+    # Re-check career state with fresh server data (catches stale local state)
+    if active_account and active_account.get("career") and active_account["career"].get("active"):
+        return {"success": False, "detail": "Server has an active career – use RESUME or delete it first"}
+
     if not active_start_state.get('tp_info'):
         return {"success": False, "detail": "Missing live TP state; login again before starting career"}
     if 'current_money' not in active_start_state:
@@ -816,23 +1009,47 @@ def start_career_from_request(req):
     tp_info = active_start_state['tp_info']
     current_tp = int(tp_info.get('current_tp') or 0)
     if req.use_tp and current_tp < req.use_tp:
-        for attempt in range(3):
+        # Try item-based TP restoration first (e.g. "Toughness" item)
+        from career_bot.items import TP_RESTORE_ITEMS
+        for item_id, tp_per_use in TP_RESTORE_ITEMS.items():
+            owned_count = active_client.item_map.get(int(item_id), 0)
+            if owned_count <= 0:
+                continue
+            still_needed = req.use_tp - current_tp
+            uses_needed = min(owned_count, (still_needed + tp_per_use - 1) // tp_per_use)
+            if uses_needed <= 0:
+                continue
             try:
-                needed = ((req.use_tp - current_tp) + 29) // 30
-                active_client.recovery_tp(needed)
+                print(f"TP RESTORE: using item {item_id} x{uses_needed} ({tp_per_use} TP each)")
+                active_client.use_tp_item(item_id, uses_needed)
                 tp_info = active_client.tp_info
                 active_start_state['tp_info'] = tp_info
                 current_tp = int(tp_info.get('current_tp') or 0)
+                print(f"TP after item restore: {current_tp}")
                 if current_tp >= req.use_tp:
                     break
             except Exception as e:
-                if "213" in str(e):
-                    try:
-                        res = active_client.call("load/index", {"adid": ""})
-                        active_client.refresh_cached_account_state(res.get("data", {}))
-                    except Exception:
-                        pass
-                dna_sleep(1.0, 1.0)
+                print(f"TP item restore failed for item {item_id}: {e}")
+
+        # Fall back to jewel recovery if still not enough
+        if req.use_tp and current_tp < req.use_tp:
+            for attempt in range(3):
+                try:
+                    needed = ((req.use_tp - current_tp) + 29) // 30
+                    active_client.recovery_tp(needed)
+                    tp_info = active_client.tp_info
+                    active_start_state['tp_info'] = tp_info
+                    current_tp = int(tp_info.get('current_tp') or 0)
+                    if current_tp >= req.use_tp:
+                        break
+                except Exception as e:
+                    if "213" in str(e):
+                        try:
+                            res = active_client.call("load/index", {"adid": ""})
+                            active_client.refresh_cached_account_state(res.get("data", {}))
+                        except Exception:
+                            pass
+                    dna_sleep(1.0, 1.0)
 
     if req.use_tp and current_tp < req.use_tp:
         return {"success": False, "detail": f"Not enough TP: {current_tp}/{req.use_tp}"}
@@ -840,23 +1057,23 @@ def start_career_from_request(req):
     succession_rank_point = selected_succession_rank_point(req)
 
     try:
-        print("STEP 3A")
         active_client.pre_single_mode([req.friend_viewer_id] if req.friend_viewer_id else [])
 
-        print("STEP 3B")
         dna_sleep(0.5, 1.5)
 
-        print("STEP 3C")
     except Exception as e:
         print("PRE_SINGLE_MODE ERROR:", e)
 
     
-    print(
-        "RENTAL:",
-        req.rental_viewer_id,
-        req.rental_trained_chara_id
-    )
-    print("STEP 4")
+    # Resolve human-readable names for trainee and both parents for easier debugging
+    def _resolve_name(card_id_str):
+        return chara_map.get(str(card_id_str), f"Unknown ({card_id_str})")
+    trainee_name = _resolve_name(req.card_id)
+    parent1_cards = active_parent_cards.get(int(req.parent_id_1), [])
+    parent2_cards = active_parent_cards.get(int(req.parent_id_2), [])
+    parent1_name = _resolve_name(parent1_cards[0]) if parent1_cards else f"Unknown (id={req.parent_id_1})"
+    parent2_name = _resolve_name(parent2_cards[0]) if parent2_cards else f"Unknown (id={req.parent_id_2})"
+    print(f"[career] start: {trainee_name} | p1={parent1_name} p2={parent2_name} rental={req.rental_trained_chara_id} deck={req.deck_id}")
     result = active_client.start_career(
         card_id=req.card_id,
         support_card_ids=req.support_card_ids,
@@ -879,7 +1096,6 @@ def start_career_from_request(req):
         is_boost=req.is_boost,
         boost_story_event_id=req.boost_story_event_id
     )
-    print("STEP 5")
     return {"success": True, "result": result}
 
 def apply_career_result(result):
@@ -915,6 +1131,12 @@ async def login(req: LoginRequest):
         chara = None
         cfg = dict(pending_game_auth_config)
         pending_game_auth_config = {}
+        # If no fresh Frida capture, try the saved auth cache to skip Steam API
+        if not has_fresh_auth_config(cfg):
+            cached = _load_auth_cache()
+            if has_fresh_auth_config(cached):
+                cfg = cached
+                print("[auth_cache] using cached auth — skipping Steam API call")
 
         active_client = None
         active_account = None
@@ -927,14 +1149,14 @@ async def login(req: LoginRequest):
             "deck": None,
             "friend": None,
             "trainee": None,
-            "veterans": []
+            "veterans": [],
+            "guestParent": None
         }
 
         has_form_creds = bool(req.username and req.password)
         if req.steam_id and req.steam_session_ticket:
             sid = str(req.steam_id)
             tkt = str(req.steam_session_ticket)
-            print('Using provided Steam ticket')
         elif has_form_creds:
             sid, tkt = get_ticket(req.username, req.password, req.code)
         else:
@@ -955,6 +1177,7 @@ async def login(req: LoginRequest):
         if not res:
             raise HTTPException(status_code=401, detail="Game login failed")
         active_client = gated_client
+        _save_auth_cache(cfg)  # persist for next restart
 
         d = res.get('data', {})
         career_data = None
@@ -1095,7 +1318,6 @@ async def login(req: LoginRequest):
         friend_support_data = d.get('friend_support_card_data', {})
 
         for info in friend_support_data.get('summary_user_info_array', []):
-            print("FOUND FRIEND PARENT:", info.get('name'))
             utc = info.get('user_trained_chara')
             if not utc:
                 continue
@@ -1105,8 +1327,10 @@ async def login(req: LoginRequest):
             parents.append({
                 'instance_id': utc.get('trained_chara_id'),
                 'card_id': cid,
-                'name': f"[FRIEND] {info.get('name', 'Unknown')}",
+                'name': f"[GUEST] {info.get('name', 'Unknown')}",
                 'rank': utc.get('rank', 0),
+                'is_guest': True,
+                'guest_viewer_id': info.get('viewer_id', 0),
                 'tree': {
                     "self": {
                         "card_id": cid,
@@ -1123,8 +1347,6 @@ async def login(req: LoginRequest):
             }
         })
 
-        print(f"LOCAL PARENTS: {len(trained_chara_list)}")
-        print(f"TOTAL PARENTS: {len(parents)}")
         
         active_dashboard_data = {
             "success": True,
@@ -1179,10 +1401,111 @@ async def logout():
         "deck": None,
         "friend": None,
         "trainee": None,
-        "veterans": []
+        "veterans": [],
+        "guestParent": None
     }
     return {"success": True}
 
+def _build_parent_entry(chara, owner_name):
+    """Build a parent dict from a trained_chara object."""
+    raw_id = str(chara.get('card_id', ''))
+    if not raw_id.isdigit():
+        return None
+    cid = raw_id
+    tree = {
+        "self": {"card_id": cid, "name": chara_map.get(cid, f"Unknown ({cid})"), "factors": get_factors(get_chara_factor_ids(chara), cid), "wins": get_win_summary(chara.get('win_saddle_id_array', []))},
+        "p1":  {"card_id": 0, "name": "", "factors": [], "wins": get_win_summary([])},
+        "p2":  {"card_id": 0, "name": "", "factors": [], "wins": get_win_summary([])},
+        "gp1": {"card_id": 0, "name": "", "factors": [], "wins": get_win_summary([])},
+        "gp2": {"card_id": 0, "name": "", "factors": [], "wins": get_win_summary([])},
+        "gp3": {"card_id": 0, "name": "", "factors": [], "wins": get_win_summary([])},
+        "gp4": {"card_id": 0, "name": "", "factors": [], "wins": get_win_summary([])},
+    }
+    pos_map = {10: "p1", 20: "p2", 11: "gp1", 12: "gp2", 21: "gp3", 22: "gp4"}
+    for sc in chara.get('succession_chara_array') or []:
+        key = pos_map.get(sc.get('position_id'))
+        sc_cid = sc.get('card_id', 0)
+        if key:
+            tree[key] = {"card_id": sc_cid, "name": chara_map.get(str(sc_cid), f"Unknown ({sc_cid})"), "factors": get_factors(sc.get('factor_id_array', []), sc_cid), "wins": get_win_summary(sc.get('win_saddle_id_array', []))}
+    instance_id = chara.get('trained_chara_id')
+    lineage_cards = [int(cid)] + [int(sc.get('card_id')) for sc in chara.get('succession_chara_array') or [] if sc.get('card_id')]
+    active_parent_cards[int(instance_id)] = lineage_cards
+    active_parent_rank_points[int(instance_id)] = {'rank': chara.get('rank', 0), 'rank_score': chara.get('rank_score', 0)}
+    return {'instance_id': instance_id, 'card_id': cid, 'name': chara_map.get(cid, f"Unknown ({cid})"), 'owner_name': owner_name, 'rank': chara.get('rank', 0), 'tree': tree}
+
+@app.get("/api/follow/parents")
+async def get_follow_parents():
+    if not active_client:
+        raise HTTPException(status_code=401, detail="Not logged in")
+    try:
+        # pre_single_mode/index already returns followed players' succession umas
+        # in succession_trained_chara_data — no separate follow endpoint needed
+        result = active_client.pre_single_mode([])
+        data = result.get('data', {})
+
+        stcd = data.get('succession_trained_chara_data', {})
+        chara_array = stcd.get('succession_trained_chara_array', [])
+        user_array = stcd.get('summary_user_info_array', [])
+
+        user_map = {u['viewer_id']: u.get('name', f'Player {u["viewer_id"]}') for u in user_array}
+
+        all_parents = []
+        for chara in chara_array:
+            trained_chara_id = chara.get('trained_chara_id')
+            if not trained_chara_id:
+                continue
+
+            card_id = str(chara.get('card_id', ''))
+            rank_num = int(chara.get('rank') or 0)
+            rank_score = int(chara.get('rank_score') or 0)
+            owner_viewer_id = chara.get('viewer_id', 0)
+            owner_name = user_map.get(owner_viewer_id, f'Player {owner_viewer_id}')
+
+            tree = {
+                "self": {"card_id": card_id, "name": chara_map.get(card_id, f"Unknown ({card_id})"), "factors": get_factors(get_chara_factor_ids(chara), card_id), "wins": get_win_summary(chara.get('win_saddle_id_array', []))},
+                "p1":  {"card_id": 0, "name": "", "factors": [], "wins": get_win_summary([])},
+                "p2":  {"card_id": 0, "name": "", "factors": [], "wins": get_win_summary([])},
+                "gp1": {"card_id": 0, "name": "", "factors": [], "wins": get_win_summary([])},
+                "gp2": {"card_id": 0, "name": "", "factors": [], "wins": get_win_summary([])},
+                "gp3": {"card_id": 0, "name": "", "factors": [], "wins": get_win_summary([])},
+                "gp4": {"card_id": 0, "name": "", "factors": [], "wins": get_win_summary([])}
+            }
+            for sc in chara.get('succession_chara_array', []):
+                pos = sc.get('position_id')
+                sc_cid = sc.get('card_id', 0)
+                key = {10: "p1", 20: "p2", 11: "gp1", 12: "gp2", 21: "gp3", 22: "gp4"}.get(pos)
+                if key:
+                    tree[key] = {
+                        "card_id": sc_cid,
+                        "name": chara_map.get(str(sc_cid), f"Unknown ({sc_cid})"),
+                        "factors": get_factors(sc.get('factor_id_array', []), sc_cid),
+                        "wins": get_win_summary(sc.get('win_saddle_id_array', []))
+                    }
+
+            lineage_cards = [int(card_id)] if card_id.isdigit() else []
+            for sc in chara.get('succession_chara_array', []) or []:
+                sc_cid = sc.get('card_id', 0)
+                if sc_cid:
+                    lineage_cards.append(int(sc_cid))
+            active_parent_cards[int(trained_chara_id)] = lineage_cards
+            active_parent_rank_points[int(trained_chara_id)] = {'rank': rank_num, 'rank_score': rank_score}
+
+            all_parents.append({
+                'instance_id': trained_chara_id,
+                'card_id': card_id,
+                'name': f"[{owner_name}] {chara_map.get(card_id, f'Unknown ({card_id})')}",
+                'rank': rank_num,
+                'tree': tree,
+                'owner_viewer_id': owner_viewer_id,
+                'owner_name': owner_name,
+                'from_follow': True,
+            })
+
+        return {'success': True, 'parents': all_parents}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ── REST API: career lifecycle ──────────────────────────────────────────────
 @app.post("/api/career/start")
 async def start_career(req: StartCareerRequest):
     try:
@@ -1197,6 +1520,9 @@ async def start_career(req: StartCareerRequest):
 backend_loop_thread = None
 backend_loop_stop = False
 
+# ── LOOP mode: managed career loop (dev/continuous mode) ───────────────────
+# Runs in a background thread when LOOP: ON is enabled.
+# Automatically retries / starts new careers until stopped.
 def manage_career_loop(req, preset, initial_result):
     global backend_loop_stop, active_account, active_client
     max_steps = max(1, min(int(req.max_steps or 2500), 3000))
@@ -1213,6 +1539,23 @@ def manage_career_loop(req, preset, initial_result):
             dna_sleep(1.0, 1.0)
             
         status = career_runner.snapshot()
+        if status.get("finished"):
+            try:
+                _fans_end = int(status.get("final_fans") or 0)
+                _card_id  = status.get("final_card_id") or (
+                    active_account["career"].get("card_id") if active_account and active_account.get("career") else "")
+                _fans_start = int((active_account or {}).get("career", {}).get("fans") or 0) if _fans_end else 0
+                _fans_gained = max(0, _fans_end - _fans_start)
+                if _fans_end > 0:
+                    record_career_fans(
+                        card_id=_card_id,
+                        fans_gained=_fans_gained,
+                        final_fans=_fans_end,
+                        preset_name=preset.get("name", ""),
+                        final_turn=int(status.get("turn") or 0),
+                    )
+            except Exception as _e:
+                print(f"fan_stats record error: {_e}")
         if status.get("last_error"):
             consecutive_fails += 1
             if consecutive_fails >= 3:
@@ -1328,7 +1671,13 @@ async def run_career(req: RunCareerRequest):
 
 @app.get("/api/career/runner")
 async def career_runner_status():
-    return {"success": True, "runner": career_runner.snapshot()}
+    # Include fresh account + selection so diagnostics card always shows current run.
+    return {
+        "success": True,
+        "runner": career_runner.snapshot(),
+        "account": active_account,
+        "selection": active_selection,
+    }
 
 @app.post("/api/career/runner/stop")
 async def stop_career_runner():
@@ -1448,13 +1797,455 @@ async def delete_career(req: DeleteCareerRequest):
     except Exception as e:
         return {"success": False, "detail": str(e)}
 
+@app.post("/api/career/give-up")
+async def give_up_career():
+    """
+    Permanently abandon the active career (equivalent to in-game Give Up).
+
+    If the bot runner is currently active, it is stopped first; then
+    single_mode_free/finish is called with is_force_delete=True to cancel
+    the career on the server.  The active career state is cleared afterwards.
+    """
+    global active_client, active_account, active_dashboard_data, backend_loop_thread
+    if not active_client:
+        return {"success": False, "detail": "Not logged in"}
+
+    # 1. Stop the runner if it is running and wait for it to exit
+    snap = career_runner.snapshot()
+    if snap.get("running"):
+        career_runner.stop()
+        if career_runner.thread and career_runner.thread.is_alive():
+            career_runner.thread.join(timeout=12)
+
+    try:
+        account = active_account or {}
+        career = account.get("career") or {}
+        current_turn = snap.get("turn") or career.get("turn") or 1
+
+        # 2. Refresh career state from server if needed
+        if not career.get("active"):
+            load_result = active_client.call('load/index')
+            load_data = load_result.get('data', {})
+            update_start_state(load_data)
+            account = get_account_status(load_data)
+            active_account = account
+            career = account.get("career") or {}
+            current_turn = career.get("turn") or current_turn
+
+        if not career.get("active"):
+            return {"success": False, "detail": "No active career to give up"}
+
+        # 3. Cancel the career on the server (is_force_delete=True = give up)
+        active_client.finish_career(current_turn=int(current_turn), is_force_delete=True)
+
+        account["career"] = None
+        active_account = account
+        if active_dashboard_data:
+            active_dashboard_data["account"] = account
+
+        print(f"[give-up] Career abandoned at turn {current_turn}")
+        return {"success": True, "account": account}
+    except Exception as e:
+        return {"success": False, "detail": str(e)}
+
+
 @app.get("/api/debug/start_state")
 async def get_start_state():
     return active_start_state
 
+@app.get("/api/status/items")
+async def get_item_status():
+    """Returns all items the user currently owns (from cached item_map after login/load)."""
+    if not active_client:
+        return {"error": "not logged in"}
+    from career_bot.items import ITEM_NAMES, TP_RESTORE_ITEMS
+    items = []
+    for item_id, count in sorted(active_client.item_map.items()):
+        if count > 0:
+            items.append({
+                "item_id": item_id,
+                "name": ITEM_NAMES.get(item_id, f"Unknown ({item_id})"),
+                "count": count,
+                "is_tp_item": item_id in TP_RESTORE_ITEMS,
+                "tp_per_use": TP_RESTORE_ITEMS.get(item_id),
+            })
+    return {"items": items, "total_unique": len(items)}
+
+# ── REST API: circle (club) stats ──────────────────────────────────────────
+@app.get("/api/stats/circle")
+async def get_circle_stats(refresh: bool = False):
+    """Return club info: name from cache, fans/ranking from circle/detail with circle_id."""
+    if not active_client:
+        return {"success": False, "detail": "Not logged in"}
+
+    ld = active_client.cached_load_data or {}
+    cd = ld.get("circle_data") or {}
+    ci = cd.get("circle_info") or {}
+    name = ci.get("name")
+    circle_id = ci.get("circle_id")
+
+    member_num = None
+    comment = None
+    rank = None
+    score = None
+
+    def _parse_circle_response(data):
+        nonlocal name, member_num, comment, rank, score
+        if not isinstance(data, dict):
+            return
+        ci_live = data.get("circle_info") or {}
+        name = ci_live.get("name") or name
+        member_num = ci_live.get("member_num")
+        comment = ci_live.get("comment")
+        ranking = data.get("circle_ranking_this_month") or {}
+        rank = ranking.get("rank")
+        score = ranking.get("point")
+
+    if circle_id:
+        # Try circle/detail first, fall back to circle/room_enter
+        for endpoint, payload in [
+            ("circle/detail",     {"circle_id": circle_id}),
+            ("circle/room_enter", {"circle_id": circle_id, "no_join_user": False}),
+        ]:
+            try:
+                res = active_client.call(endpoint, payload)
+                data = res.get("data") or res
+                _parse_circle_response(data)
+                break
+            except Exception as e:
+                print(f"[{endpoint}] failed: {e}")
+
+    result = {}
+    if name:
+        result["name"] = name
+    if member_num is not None:
+        result["member_num"] = int(member_num)
+    if rank is not None:
+        result["rank"] = int(rank)
+    if score is not None:
+        result["score"] = int(score)
+    if comment:
+        result["comment"] = comment
+
+    if not result:
+        return {"success": False, "detail": "No circle data available"}
+
+    return {"success": True, "circle": result}
+
+# ── REST API: fan stats ─────────────────────────────────────────────────────
+@app.get("/api/stats/fans")
+async def get_fan_stats():
+    """Fan farming stats: session totals, daily totals, per-career history, circle info."""
+    today = _date_mod.today().isoformat()
+    with _fan_stats_lock:
+        careers = list(_fan_stats.get("careers", []))
+
+    today_gained = sum(c["fans_gained"] for c in careers if c.get("date") == today)
+    total_gained = sum(c["fans_gained"] for c in careers)
+
+    # circle (club) info from cached load/index response
+    circle_info = None
+    if active_client and active_client.cached_load_data:
+        ld = active_client.cached_load_data
+        # Try known key names first, then fall back to any key containing "circle" or "guild"
+        _cd = ld.get("circle_data")
+        circle_info = _cd.get("circle_info") if isinstance(_cd, dict) else None
+
+    # current fans — prefer live runner snapshot (updates every turn) over stale account cache
+    current_fans = None
+    if active_account and active_account.get("career") and active_account["career"].get("active"):
+        snap = career_runner.snapshot()
+        current_fans = snap.get("current_fans") or active_account["career"].get("fans")
+
+    return {
+        "session_gained": _session_fans_gained,
+        "today_gained": today_gained,
+        "total_gained": total_gained,
+        "careers_count": len(careers),
+        "recent_careers": careers[-30:][::-1],   # newest first, last 30
+        "current_fans": current_fans,
+        "circle_info": circle_info,
+    }
+
+@app.delete("/api/stats/fans")
+async def clear_fan_stats():
+    global _fan_stats, _session_fans_gained
+    with _fan_stats_lock:
+        _fan_stats = {"careers": []}
+        _session_fans_gained = 0
+        _save_fan_stats()
+    return {"success": True}
+
+_sniffer_session = None
+_sniffer_log = []
+_sniffer_lock = threading.Lock()
+
+SNIFFER_JS = r'''
+'use strict';
+(function() {
+    // ── TLS hook: captures outgoing HTTP request endpoint names ──────────────
+    var buffers = {};
+    var attached = {};
+    function parseHttp(text) {
+        if (text.indexOf('/umamusume/') < 0) return;
+        var em = text.match(/POST\s+\/umamusume\/([^\s]+)\s+HTTP/i);
+        if (!em) return;
+        send({type: 'endpoint', endpoint: em[1], body: ''});
+    }
+    function parseChunk(key, chunk) {
+        var buf = (buffers[key] || '') + chunk;
+        if (buf.length > 2097152) buf = buf.substring(buf.length - 1048576);
+        var start = buf.indexOf('POST ');
+        if (start < 0) { buffers[key] = buf.slice(-4096); return; }
+        if (start > 0) buf = buf.substring(start);
+        var headerEnd = buf.indexOf('\r\n\r\n');
+        if (headerEnd < 0) { buffers[key] = buf; return; }
+        var headers = buf.substring(0, headerEnd);
+        var lm = headers.match(/Content-Length:\s*(\d+)/i);
+        var length = lm ? parseInt(lm[1], 10) : 0;
+        var total = headerEnd + 4 + length;
+        if (length > 0 && buf.length < total) { buffers[key] = buf; return; }
+        parseHttp(length > 0 ? buf.substring(0, total) : buf);
+        buffers[key] = buf.length > total ? buf.substring(total) : '';
+    }
+    function hookTls() {
+        var ga = Process.findModuleByName('GameAssembly.dll');
+        if (!ga) return false;
+        var installFn = ga.findExportByName('il2cpp_unity_install_unitytls_interface');
+        if (!installFn) return false;
+        var rb = new Uint8Array(installFn.readByteArray(16));
+        var realFn = installFn;
+        if (rb[0] === 0xe9) {
+            var off = rb[1] | (rb[2] << 8) | (rb[3] << 16) | (rb[4] << 24);
+            if (off > 0x7fffffff) off -= 0x100000000;
+            realFn = installFn.add(5 + off);
+            rb = new Uint8Array(realFn.readByteArray(16));
+        }
+        var globalPtr = null;
+        if (rb[0] === 0x48 && rb[1] === 0x89 && rb[2] === 0x0d) {
+            var disp = rb[3] | (rb[4] << 8) | (rb[5] << 16) | (rb[6] << 24);
+            if (disp > 0x7fffffff) disp -= 0x100000000;
+            globalPtr = realFn.add(7 + disp);
+        }
+        if (!globalPtr) return false;
+        var iface = globalPtr.readPointer();
+        if (!iface || iface.isNull()) return false;
+        var hookedTls = 0;
+        [0xd0, 0xd8, 0xe0, 0xe8].forEach(function(off) {
+            var addr = iface.add(off).readPointer();
+            if (!addr || addr.isNull()) return;
+            var key = 'tls_' + addr.toString();
+            if (attached[key]) return;
+            try {
+                Interceptor.attach(addr, {
+                    onEnter: function(args) {
+                        var len = args[2].toInt32();
+                        if (len <= 0 || len > 1048576 || args[1].isNull()) return;
+                        try {
+                            var bytes = args[1].readByteArray(len);
+                            var u8 = new Uint8Array(bytes);
+                            var s = '';
+                            for (var i = 0; i < u8.length; i++) s += String.fromCharCode(u8[i]);
+                            parseChunk(args[0].toString(), s);
+                        } catch(e) {}
+                    }
+                });
+                attached[key] = true;
+                hookedTls++;
+            } catch(e) {}
+        });
+        return hookedTls > 0;
+    }
+    var tlsDone = false;
+    var timer = setInterval(function() {
+        try { if (!tlsDone) tlsDone = hookTls(); if (tlsDone) clearInterval(timer); } catch(e) {}
+    }, 1000);
+
+    // ── HttpHelper hook: captures decoded response bodies (post-decrypt) ──────
+    // Same technique as SweepTosher/dumper — hooks DecompressResponse to get
+    // clean msgpack before any game-side processing.
+    function hookHttpHelper() {
+        var ga = Process.findModuleByName('GameAssembly.dll');
+        if (!ga) return;
+        var il2cpp_domain_get = new NativeFunction(ga.findExportByName('il2cpp_domain_get'), 'pointer', []);
+        var il2cpp_domain_get_assemblies = new NativeFunction(ga.findExportByName('il2cpp_domain_get_assemblies'), 'pointer', ['pointer', 'pointer']);
+        var il2cpp_assembly_get_image = new NativeFunction(ga.findExportByName('il2cpp_assembly_get_image'), 'pointer', ['pointer']);
+        var il2cpp_class_from_name = new NativeFunction(ga.findExportByName('il2cpp_class_from_name'), 'pointer', ['pointer', 'pointer', 'pointer']);
+        var il2cpp_class_get_method_from_name = new NativeFunction(ga.findExportByName('il2cpp_class_get_method_from_name'), 'pointer', ['pointer', 'pointer', 'int']);
+        var il2cpp_array_length_fn = new NativeFunction(ga.findExportByName('il2cpp_array_length'), 'uint', ['pointer']);
+        var arrayAddrExport = ga.findExportByName('il2cpp_array_addr_with_size');
+        var il2cpp_array_addr = arrayAddrExport ? new NativeFunction(arrayAddrExport, 'pointer', ['pointer', 'int', 'uint']) : null;
+
+        var domain = il2cpp_domain_get();
+        var sizeOut = Memory.alloc(4);
+        var assemblies = il2cpp_domain_get_assemblies(domain, sizeOut);
+        var assemblyCount = sizeOut.readU32();
+        var nsPtr = Memory.allocUtf8String('Gallop');
+        var cnPtr = Memory.allocUtf8String('HttpHelper');
+        var foundClass = null;
+        for (var i = 0; i < assemblyCount && !foundClass; i++) {
+            var assembly = assemblies.add(i * Process.pointerSize).readPointer();
+            var image = il2cpp_assembly_get_image(assembly);
+            var klass = il2cpp_class_from_name(image, nsPtr, cnPtr);
+            if (!klass.isNull()) foundClass = klass;
+        }
+        if (!foundClass) return;
+
+        function readManagedArray(arr) {
+            var len = il2cpp_array_length_fn(arr);
+            if (len <= 0 || len > 50 * 1024 * 1024) return null;
+            var dataPtr = il2cpp_array_addr ? il2cpp_array_addr(arr, 1, 0) : arr.add(0x20);
+            return dataPtr.readByteArray(len);
+        }
+
+        // Hook DecompressResponse — fires after the server response is decrypted
+        var decompName = Memory.allocUtf8String('DecompressResponse');
+        var decompMethod = il2cpp_class_get_method_from_name(foundClass, decompName, 1);
+        if (!decompMethod.isNull()) {
+            Interceptor.attach(decompMethod.readPointer(), {
+                onLeave: function(retval) {
+                    if (!retval.isNull()) {
+                        try {
+                            var data = readManagedArray(retval);
+                            if (data) send({type: 'response_body'}, data);
+                        } catch(e) {}
+                    }
+                }
+            });
+        }
+
+        // Hook CompressRequest — fires before the request is encrypted (outgoing)
+        var compName = Memory.allocUtf8String('CompressRequest');
+        var compMethod = il2cpp_class_get_method_from_name(foundClass, compName, 1);
+        if (!compMethod.isNull()) {
+            Interceptor.attach(compMethod.readPointer(), {
+                onEnter: function(args) {
+                    try {
+                        var data = readManagedArray(args[0]);
+                        if (!data) data = readManagedArray(args[1]);
+                        if (data) send({type: 'request_body'}, data);
+                    } catch(e) {}
+                }
+            });
+        }
+    }
+
+    setTimeout(function() { try { hookHttpHelper(); } catch(e) {} }, 2000);
+})();
+'''
+
+@app.post("/api/debug/sniff_start")
+async def sniff_start():
+    global _sniffer_session, _sniffer_log
+    if _sniffer_session:
+        return {"error": "already sniffing"}
+    try:
+        import frida as _frida
+        _sniffer_log = []
+        session = _frida.attach(PROCESS_NAME)
+        script = session.create_script(SNIFFER_JS)
+        # Track the most recently seen endpoint name so we can pair it with the response body
+        _last_endpoint = [None]
+
+        def on_msg(message, data):
+            if message.get('type') != 'send':
+                return
+            payload = message.get('payload') or {}
+            msg_type = payload.get('type')
+
+            if msg_type == 'endpoint':
+                ep = payload.get('endpoint', '')
+                _last_endpoint[0] = ep
+                entry = {"endpoint": ep, "payload": None}
+                with _sniffer_lock:
+                    _sniffer_log.append(entry)
+                    print(f"[SNIFF] {ep}")
+
+            elif msg_type in ('response_body', 'request_body') and data:
+                # Decode clean msgpack from HttpHelper hooks
+                try:
+                    import msgpack as _msgpack
+                    decoded = _msgpack.unpackb(bytes(data), raw=False, strict_map_key=False)
+                    # For responses, data is nested under 'data' key
+                    if msg_type == 'response_body' and isinstance(decoded, dict):
+                        inner = decoded.get('data', decoded)
+                    else:
+                        inner = decoded
+                    ep = _last_endpoint[0] or '?'
+                    entry = {"endpoint": ep, "type": msg_type, "payload": inner}
+                    with _sniffer_lock:
+                        _sniffer_log.append(entry)
+                        print(f"[SNIFF:{msg_type}] {ep} → {json.dumps(inner, ensure_ascii=False, default=str)[:300]}")
+                except Exception as dec_err:
+                    print(f"[SNIFF:{msg_type}] decode error: {dec_err}")
+        script.on('message', on_msg)
+        script.load()
+        _sniffer_session = (session, script)
+        return {"success": True, "message": "Sniffing started — now go save a deck in-game, then call /api/debug/sniff_stop"}
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.post("/api/debug/sniff_stop")
+async def sniff_stop():
+    global _sniffer_session, _sniffer_log
+    if not _sniffer_session:
+        return {"error": "not sniffing"}
+    try:
+        session, script = _sniffer_session
+        script.unload()
+        session.detach()
+    except Exception:
+        pass
+    _sniffer_session = None
+    with _sniffer_lock:
+        log = list(_sniffer_log)
+    return {"success": True, "captured_endpoints": log}
+
+@app.get("/api/debug/sniff_log")
+async def sniff_log():
+    with _sniffer_lock:
+        return {"sniffing": _sniffer_session is not None, "captured_endpoints": list(_sniffer_log)}
+
+class RawCallRequest(BaseModel):
+    endpoint: str
+    payload: dict = {}
+
+@app.post("/api/debug/call")
+async def debug_raw_call(req: RawCallRequest):
+    """Call any game API endpoint with a custom payload. Useful for discovering correct deck/item endpoints."""
+    if not active_client:
+        return {"error": "not logged in"}
+    try:
+        result = active_client.call(req.endpoint, req.payload)
+        return {"success": True, "endpoint": req.endpoint, "result": result}
+    except Exception as e:
+        return {"success": False, "endpoint": req.endpoint, "error": str(e)}
+
 @app.get("/api/debug/raw_load")
 async def get_raw_load():
-    return {"error": "raw load/index response storage disabled"}
+    if not active_client:
+        return {"error": "not logged in"}
+    try:
+        res = active_client.call('load/index', {'adid': ''})
+        d = res.get('data', {})
+        # Return all top-level keys summary + full content of deck-related keys
+        summary = {}
+        deck_data = {}
+        deck_keywords = {'deck', 'party', 'support_card'}
+        for k, v in d.items():
+            if any(kw in k.lower() for kw in deck_keywords):
+                deck_data[k] = v
+            elif isinstance(v, list):
+                summary[k] = f"list[{len(v)}]"
+                if v and isinstance(v[0], dict):
+                    summary[k] += " keys=" + str(list(v[0].keys())[:8])
+            elif isinstance(v, dict):
+                summary[k] = f"dict keys={list(v.keys())[:8]}"
+            else:
+                summary[k] = repr(v)[:80]
+        return {"keys": summary, "deck_related": deck_data}
+    except Exception as e:
+        return {"error": str(e)}
 
 @app.get("/api/images/{image_name}")
 async def get_image(image_name: str):
@@ -1545,6 +2336,9 @@ def kill_process_by_name(name):
 def kill_listeners_on_port(port):
     if os.name != 'nt':
         return
+def kill_listeners_on_port(port):
+    if os.name != 'nt':
+        return
     try:
         proc = subprocess.run(
             ['netstat', '-ano'],
@@ -1615,6 +2409,9 @@ def launch_game():
         print(f'Failed to launch Umamusume through Steam: {e}')
         return False
 
+# ── Auth refresh: Frida-based credential capture ────────────────────────────
+# Called once at startup. Injects JS_CODE into the game process via Frida,
+# waits for a live API call to capture fresh credentials, then saves them.
 def refresh_auth_before_serving(timeout_sec=None):
     global pending_game_auth_config
     timeout_sec = timeout_sec or int(os.environ.get('SWEEPY_AUTH_CAPTURE_TIMEOUT_SEC', '180'))

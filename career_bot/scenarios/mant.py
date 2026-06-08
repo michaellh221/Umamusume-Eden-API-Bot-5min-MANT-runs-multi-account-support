@@ -1,7 +1,42 @@
+"""
+career_bot/scenarios/mant.py
+============================
+MantStrategy – decision engine for the "Make a New Track!" (MANT) scenario
+(scenario_id = 4).
+
+Decision priority (next_decision)
+----------------------------------
+1. Career finished?          → "finish"
+2. Pending event?            → "event" (handle it, auto-pick best choice)
+3. Character state == 3?     → "finish" (goal evaluation screen)
+4. Race already in progress? → "race_progress" (resume)
+5. Forced race (mandatory)?  → "race"
+6. Optional race (planner)?  → "race" (unless G2/G3 skipped for better train)
+7. Otherwise                 → best training command via _best_command()
+
+Scoring (_score_command)
+------------------------
+Each available training command gets a composite score based on:
+- Stat gains weighted by stat_priority and score_value from the preset.
+- Support card partner bonuses (friendship, special training triggers).
+- Deficit multiplier: under-target stats get a score boost.
+- Mood / motivation multiplier.
+- Summer camp bonus turns are scored differently (higher partner weight).
+
+Extending / forking notes
+--------------------------
+- BAD_EFFECT_NAMES maps game effect IDs to English names used in cure logic.
+- SUMMER_CAMP_TURNS / SUMMER_CONSERVE_TURNS control the special summer calendar.
+- To tune scoring, adjust score_value / stat_priority in the preset JSON rather
+  than editing weights here.  For structural changes, override _score_command().
+"""
+
 from career_bot.events import EventManager
 from career_bot.scenarios.base import Decision, ScenarioStrategy
 
 
+# Maps command_id → stat index [Speed=0, Stamina=1, Power=2, Guts=3, Wit=4].
+# Index 30 = Wit (alternative command_id used in summer camp).
 STAT_TARGETS = {
     1: 0,
     2: 1,
@@ -11,14 +46,18 @@ STAT_TARGETS = {
     30: 5,
 }
 
+# command_id → stat index for both regular (1xx) and summer-camp (6xx) training.
 TRAINING_COMMANDS = {101: 0, 105: 1, 102: 2, 103: 3, 106: 4, 601: 0, 602: 1, 603: 2, 604: 3, 605: 4}
 TRAINING_NAMES = ["Speed", "Stamina", "Power", "Guts", "Wit"]
+# Summer camp turns: all training gives bonus partner effects.
+# CONSERVE turns: save HP going into camp / before next camp block.
 SUMMER_CAMP_TURNS = {36, 37, 38, 39, 40, 60, 61, 62, 63, 64}
 SUMMER_CONSERVE_TURNS = {35, 36, 59, 60}
 SUMMER_CONSERVE_ENERGY = 60
 ENERGY_FAST_MEDIC = 80
 ENERGY_MEDIC_GENERAL = 85
 DECK_PARTNERS = {1, 2, 3, 4, 5, 6}
+# Maps bad-condition effect_id → display name used in cure-asap logic.
 BAD_EFFECT_NAMES = {
     1: "Night Owl",
     2: "Slacker",
@@ -29,6 +68,7 @@ BAD_EFFECT_NAMES = {
 }
 
 
+# ── Strategy class ─────────────────────────────────────────────────────────
 class MantStrategy(ScenarioStrategy):
     scenario_id = 4
 
@@ -37,8 +77,15 @@ class MantStrategy(ScenarioStrategy):
         self.event_manager = None
         if self.race_planner and self.race_planner.base_dir:
             self.event_manager = EventManager(self.race_planner.base_dir)
+        # Populated by _best_command; read by runner for the diagnostics trace panel.
+        self._last_trace = {"reason": "", "rows": []}
 
     def next_decision(self, state, preset):
+        """
+        Inspect the current game state and return the next Decision.
+        Called once per turn by CareerRunner.
+        Returns a Decision(action_type, payload, reason_string).
+        """
         data = state.get("data") or {}
         chara = data.get("chara_info") or {}
         home = data.get("home_info") or {}
@@ -68,7 +115,10 @@ class MantStrategy(ScenarioStrategy):
                 return Decision("race", {"program_id": forced_program_id, "current_turn": chara["turn"], "_strategy": self}, self.race_planner.label(forced_program_id))
             program_id = self.race_planner.choose(state, preset)
             if program_id:
-                return Decision("race", {"program_id": program_id, "current_turn": chara["turn"], "_strategy": self}, self.race_planner.label(program_id))
+                # G1 races are always mandatory; G2/G3 may be skipped for high-value training
+                if self._is_g1_race(program_id) or not self._should_skip_race_for_training(data, chara, preset):
+                    return Decision("race", {"program_id": program_id, "current_turn": chara["turn"], "_strategy": self}, self.race_planner.label(program_id))
+                # Fall through to training instead of the G2/G3 race
         command = self._best_command(data, chara, preset)
         if command:
             command_type = command.get("command_type", 1)
@@ -148,6 +198,20 @@ class MantStrategy(ScenarioStrategy):
             highest_idx = max(range(5), key=lambda idx: int(chara.get(stat_keys[idx]) or 0))
             scored = [(score * 0.95 if TRAINING_COMMANDS.get(cmd.get("command_id"), 0) == highest_idx and score > 0 else score, cmd) for score, cmd in scored]
         best_score, best = max(scored, key=lambda row: row[0])
+        # Store trace for diagnostics panel (read by runner after next_decision)
+        _label = {1: "Speed", 2: "Stamina", 3: "Power", 4: "Guts", 5: "Wit"}
+        self._last_trace = {
+            "reason": self._command_reason(best),
+            "rows": sorted([
+                {
+                    "facility": _label.get(cmd.get("command_id"), str(cmd.get("command_id", "?"))),
+                    "score": round(float(sc), 2),
+                    "failure": int(cmd.get("failure_rate") or 0),
+                    "gain": self._command_raw_gain(cmd),
+                }
+                for sc, cmd in scored
+            ], key=lambda r: -r["score"])
+        }
         rest_threshold = int(preset.get("rest_threshold") or 48)
         failure = int(best.get("failure_rate") or 0)
         if medic and bad_status and vital <= ENERGY_FAST_MEDIC:
@@ -164,6 +228,43 @@ class MantStrategy(ScenarioStrategy):
         if conserve:
             return conserve
         return best
+
+    def _is_g1_race(self, program_id):
+        """Return True if the race program is a G1 (race_instance_id starts with '1')."""
+        if not self.race_planner or not program_id:
+            return False
+        info = (self.race_planner.program or {}).get(int(program_id or 0)) or {}
+        race_inst = str(info.get("race_instance_id") or "")
+        return race_inst.startswith("1")
+
+    def _command_raw_gain(self, cmd):
+        """Sum of raw stat point gains (target_type 1-5) from a training command."""
+        total = 0
+        for item in (cmd or {}).get("params_inc_dec_info_array") or []:
+            tt = item.get("target_type")
+            if tt in (1, 2, 3, 4, 5):
+                total += int(item.get("value") or 0)
+        return total
+
+    def _should_skip_race_for_training(self, data, chara, preset):
+        """Return True if the best training command's projected gain (with items) exceeds 70 pts.
+
+        We check raw stat gain against a threshold of 55; with an Empowering Megaphone
+        (~1.3x) and Ankle Weights (~1.15x) that projects to roughly 70+ stat points.
+        """
+        commands = (data.get("home_info") or {}).get("command_info_array") or []
+        training = [
+            cmd for cmd in commands
+            if cmd.get("is_enable", 1)
+            and int(cmd.get("command_type") or 0) == 1
+            and cmd.get("command_id") in TRAINING_COMMANDS
+        ]
+        if not training:
+            return False
+        best_gain = max(self._command_raw_gain(cmd) for cmd in training)
+        # ~55 raw ≈ 70 with Empowering Megaphone + Ankle Weights
+        SKIP_RACE_RAW_THRESHOLD = 55
+        return best_gain >= SKIP_RACE_RAW_THRESHOLD
 
     def _rest_command(self, commands):
         for cmd in commands:
@@ -359,6 +460,36 @@ class MantStrategy(ScenarioStrategy):
             deck_mults = preset.get("_deck_multipliers")
             if deck_mults and len(deck_mults) > idx:
                 score *= float(deck_mults[idx])
+
+        stat_priority = preset.get("stat_priority")
+        if isinstance(stat_priority, list) and idx < 5:
+            try:
+                rank = stat_priority.index(idx)
+                priority_mults = [1.25, 1.12, 1.00, 0.90, 0.80]
+                score *= priority_mults[rank] if rank < len(priority_mults) else 1.0
+            except ValueError:
+                pass
+
+        # Target-based deficit multiplier: boost lagging stats, de-prioritize finished ones
+        if idx < 5:
+            current_val = self._current_stat(chara, idx)
+            ideal_targets = preset.get("stat_ideal_targets") or []
+            min_targets = preset.get("stat_min_targets") or []
+            ideal = int(ideal_targets[idx]) if idx < len(ideal_targets) else 0
+            minimum = int(min_targets[idx]) if idx < len(min_targets) else 0
+
+            if minimum > 0 and current_val < minimum:
+                # Below minimum — strong proportional boost (up to 1.6x)
+                deficit = 1.0 - (current_val / minimum)
+                score *= 1.0 + 0.6 * deficit
+            elif ideal > 0 and current_val < ideal:
+                # Below ideal — moderate proportional boost (up to 1.3x)
+                ref = minimum if minimum > 0 else 0
+                deficit = (ideal - current_val) / (ideal - ref) if ideal > ref else 0.0
+                score *= 1.0 + 0.3 * deficit
+            elif ideal > 0 and current_val >= ideal:
+                # Already at ideal — de-prioritize so other stats catch up
+                score *= 0.85
 
         return score
 

@@ -1,3 +1,24 @@
+"""
+career_bot/skills.py
+====================
+SkillBuyer – decides which skills to purchase during a career turn.
+
+Priority logic
+--------------
+1. Mandatory skills (preset.mandatory_skill_list) – always bought if affordable.
+2. Priority list (preset.learn_skill_list) – rows tried in order; first available
+   affordable skill in a row wins.
+3. Auto-buy override: skills matching the character's race style/distance that
+   cost below learn_skill_threshold are bought even if not on the priority list.
+4. Blacklist (preset.learn_skill_blacklist) – never buy these skill IDs.
+
+Extending / forking notes
+--------------------------
+- Skill IDs are game-internal integers.  Use the in-game skill shop or the
+  master_data module to look them up.
+- SkillBuyer is constructed fresh per career so it resets its internal buy-set.
+"""
+
 import json
 import re
 from pathlib import Path
@@ -34,6 +55,7 @@ SKILL_LEARN_PRIORITY_LIST = [
 ]
 
 
+# ── Text normalisation helpers ──────────────────────────────────────────────
 def norm(text):
     return re.sub(r'[^a-z0-9]+', '', str(text or '').lower())
 
@@ -47,6 +69,7 @@ def strip_mark(text):
     return text.strip()
 
 
+# ── SkillBuyer ──────────────────────────────────────────────────────────────
 class SkillBuyer:
     def __init__(self, base_dir):
         self.base_dir = Path(base_dir)
@@ -57,6 +80,7 @@ class SkillBuyer:
         self.skill_id_exists = set()
         self.group_to_skill_ids = {}
         self.skill_to_group_id = {}
+        self.skill_tags = {}
         self.failed_this_turn = {}
         self.current_turn = None
         self.last_candidates = []
@@ -78,6 +102,7 @@ class SkillBuyer:
             self.skill_costs = {}
             self.skill_grade_values = {}
             self.skill_to_group_id = {}
+            self.skill_tags = {}
             for raw_id, raw_info in data.items():
                 skill_id = int(raw_id)
                 if isinstance(raw_info, dict):
@@ -88,6 +113,8 @@ class SkillBuyer:
                     group_id = int(raw_info.get("group_id") or 0)
                     if group_id:
                         self.skill_to_group_id[skill_id] = group_id
+                    tags = raw_info.get("tags")
+                    self.skill_tags[skill_id] = tags if isinstance(tags, list) else []
                 else:
                     self.skill_names[skill_id] = raw_info
         except Exception:
@@ -160,6 +187,28 @@ class SkillBuyer:
         turn = int(turn if turn is not None else self.current_turn or 0)
         return self.failed_this_turn.setdefault(turn, set())
 
+    # Running style tag map: preset running_style int → tag ID
+    STYLE_TAG = {1: 101, 2: 102, 3: 103, 4: 104}
+    # Distance tag map: preset target_distance int → tag ID
+    DISTANCE_TAG = {1: 201, 2: 202, 3: 203, 4: 204}
+
+    def _auto_buy_tags(self, preset):
+        """Return the set of affinity tag IDs that should be auto-bought."""
+        tags = set()
+        style_tag = self.STYLE_TAG.get(int(preset.get("running_style") or 0))
+        if style_tag:
+            tags.add(style_tag)
+        dist_tag = self.DISTANCE_TAG.get(int(preset.get("target_distance") or 0))
+        if dist_tag:
+            tags.add(dist_tag)
+        return tags
+
+    def _skill_is_auto_buy(self, skill_id, auto_tags):
+        """True if ANY of the skill's tags match our auto-buy tag set."""
+        if not auto_tags:
+            return False
+        return bool(set(self.skill_tags.get(skill_id) or []) & auto_tags)
+
     def buy(self, client, state, preset, force=False):
         data = state.get("data") or {}
         chara = data.get("chara_info") or data.get("single_mode_chara_light") or {}
@@ -173,12 +222,6 @@ class SkillBuyer:
         self._set_turn(turn)
         is_hoarding = points > 1500
         threshold = int(preset.get("learn_skill_threshold") or 444)
-        if not force and not is_hoarding and points <= threshold:
-            self.last_candidates = []
-            self.last_selected = []
-            self.last_attempt = []
-            self.last_result = {"skip": "threshold", "points": points, "threshold": threshold}
-            return state, 0
 
         if preset.get("manual_purchase_at_end") and not force:
             self.last_candidates = []
@@ -187,9 +230,31 @@ class SkillBuyer:
             self.last_result = {"skip": "manual_purchase_at_end"}
             return state, 0
 
+        # Always get all candidates so priority-exempt ones can bypass the threshold
         candidates = self._candidates(chara, preset)
         if force and not candidates:
             candidates = self._candidates(chara, {**preset, "learn_skill_only_user_provided": False})
+
+        override_threshold = bool(preset.get("auto_buy_override_threshold", True))
+
+        # Split by exemption level:
+        #   mandatory  (priority -2): always buy, ignores threshold and override flag
+        #   auto_buy   (priority -1): bypasses threshold only when override is enabled
+        #   normal     (priority ≥0): gated by threshold
+        mandatory_candidates = [c for c in candidates if c.get("mandatory")]
+        auto_candidates = [c for c in candidates if c.get("auto_buy") and not c.get("mandatory")]
+        normal_candidates = [c for c in candidates if not c.get("auto_buy") and not c.get("mandatory")]
+
+        if not force and not is_hoarding and points <= threshold:
+            # Mandatory always proceed; auto-buy only if override enabled
+            exempt = mandatory_candidates + (auto_candidates if override_threshold else [])
+            if not exempt:
+                self.last_candidates = [dict(c) for c in candidates]
+                self.last_selected = []
+                self.last_attempt = []
+                self.last_result = {"skip": "threshold", "points": points, "threshold": threshold}
+                return state, 0
+            candidates = exempt
 
         self.last_candidates = [dict(item) for item in candidates]
         if not candidates:
@@ -272,31 +337,56 @@ class SkillBuyer:
     def _blacklist(self, preset):
         return {norm(item) for item in preset.get("learn_skill_blacklist") or []}
 
+    def _mandatory_set(self, preset):
+        """Normalised names of mandatory skills (never blocked, always first)."""
+        return {norm(s) for s in (preset.get("mandatory_skill_list") or []) if s}
+
     def _candidates(self, chara, preset):
         owned = {int(item.get("skill_id") or 0) for item in chara.get("skill_array") or []}
         owned_groups = {self.skill_to_group_id.get(skill_id, skill_id // 10) for skill_id in owned}
         priority = self._priority_context(preset)
         blacklist = self._blacklist(preset)
+        auto_tags = self._auto_buy_tags(preset)
+        mandatory = self._mandatory_set(preset)
         result = []
         for tip in chara.get("skill_tips_array") or []:
             resolved = self.resolve_skill_tip(tip, owned, owned_groups, priority, blacklist, preset)
-            if not resolved or resolved.get("skip_reason"):
+            if not resolved:
                 continue
+            skill_id = resolved["resolved_skill_id"]
+            name = resolved["resolved_name"] or ""
+            # Mandatory check overrides blacklist/skip_reason
+            is_mandatory = bool(mandatory and (
+                norm(name) in mandatory or
+                norm(strip_mark(name)) in mandatory or
+                str(skill_id) in mandatory
+            ))
+            if not is_mandatory and resolved.get("skip_reason"):
+                continue
+            is_auto = self._skill_is_auto_buy(skill_id, auto_tags) and not is_mandatory
+            if is_mandatory:
+                eff_priority = -2
+            elif is_auto:
+                eff_priority = -1
+            else:
+                eff_priority = resolved["priority"]
             result.append({
-                "skill_id": resolved["resolved_skill_id"],
+                "skill_id": skill_id,
                 "group_id": resolved["group_id"],
                 "tip_rarity": resolved["tip_rarity"],
                 "hint_level": resolved["hint_level"],
-                "name": resolved["resolved_name"],
-                "priority": resolved["priority"],
+                "name": name,
+                "priority": eff_priority,
                 "cost": resolved["cost"],
                 "bundled_skill_ids": resolved.get("bundled_skill_ids") or [],
                 "resolution_reason": resolved["resolution_reason"],
                 "failed_scope": resolved["failed_scope"],
                 "candidate_skill_ids": resolved["candidate_skill_ids"],
+                "auto_buy": is_auto,
+                "mandatory": is_mandatory,
             })
         result.sort(key=lambda item: (item["priority"], -item["hint_level"], item["cost"], item["skill_id"]))
-        
+
         deduped = []
         seen = set()
         for item in result:
@@ -304,11 +394,11 @@ class SkillBuyer:
                 seen.add(item["skill_id"])
                 deduped.append(item)
         result = deduped
-        
+
         if preset.get("learn_skill_only_user_provided"):
             if not any(row for row in (preset.get("learn_skill_list") or [])):
-                return []
-            return [item for item in result if item["priority"] < 999]
+                return [item for item in result if item.get("auto_buy") or item.get("mandatory")]
+            return [item for item in result if item["priority"] < 999 or item.get("auto_buy") or item.get("mandatory")]
         return result
 
     def resolve_skill_tip(self, tip, owned_skill_ids, owned_groups, priority, blacklist, preset):

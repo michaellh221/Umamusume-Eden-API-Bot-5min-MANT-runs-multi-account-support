@@ -50,7 +50,8 @@ TURN_DELAY_MIN = 2.5
 TURN_DELAY_MAX = 5.0
 TURN_DELAY_RESTORE_MIN = 2.5
 TURN_DELAY_RESTORE_MAX = 5.0
-GLOBAL_DELAYS_DISABLED = False
+GLOBAL_DELAYS_DISABLED = False   # controls inter-turn wait only
+TURN_DELAY_DISABLED = False        # alias used by set_turn_delay
 
 _ENDPOINT_SHIFTS = {}
 for ep in _BASE_DELAYS:
@@ -58,10 +59,8 @@ for ep in _BASE_DELAYS:
 
 
 def simulate_delay(endpoint, client=None):
-    if GLOBAL_DELAYS_DISABLED:
-        print(f"Endpoint: {endpoint} | Delay: 0.000s", flush=True)
-        return 0.0
-
+    # NOTE: per-endpoint delays are NEVER disabled — bypassing them triggers
+    # server-side bot detection (208 loops → 403 Access Denied).
     if endpoint not in _BASE_DELAYS:
         target_delay = 0.3 * _USER_SPEED_SHIFT
         mu = math.log(target_delay) - (_USER_SIGMA**2) / 2.0
@@ -110,8 +109,6 @@ def dna_randint(min_val, max_val):
     return _dna_rng.randint(min_val, max_val)
 
 def dna_sleep(min_val, max_val, mean=None, stddev=None):
-    if GLOBAL_DELAYS_DISABLED:
-        return 0.0
     if mean is not None and stddev is not None:
         dt = max(min_val, min(max_val, _dna_rng.gauss(mean, stddev)))
     else:

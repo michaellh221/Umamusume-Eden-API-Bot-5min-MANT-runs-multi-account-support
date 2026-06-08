@@ -1,3 +1,38 @@
+"""
+career_bot/runner.py
+====================
+CareerRunner – the main automation loop that drives a single training career
+from start to finish inside Uma Musume Pretty Derby (MANT scenario).
+
+High-level flow
+---------------
+1. Caller creates a UmaClient and calls  client.start_career(...)  to get the
+   initial game state.
+2.  CareerRunner.start(client, preset, initial_result)  is called.  It spawns a
+   background thread that loops until the career finishes or the user stops it.
+3. Each iteration:
+     a. The active strategy (MantStrategy) inspects the game state and returns a
+        Decision (train / race / event / rest / finish / …).
+     b. The runner executes the decision via the appropriate UmaClient method.
+     c. The new state is stored, the snapshot is updated for the UI to poll.
+4. When the career ends, CareerRunner.snapshot() exposes  finished=True  along
+   with  final_fans  and  final_card_id  so  main.py  can record fan stats.
+
+Threading model
+---------------
+- CareerRunner owns a single daemon thread per career.
+- self.lock guards status mutations.
+- stop_requested is a cooperative flag; the loop checks it before each step.
+
+Extending / forking notes
+--------------------------
+- To support a new scenario (e.g. URA Finals), add a new ScenarioStrategy
+  subclass and register it in # Maps scenario_id → strategy class.  Add entries here to support new scenarios.
+STRATEGIES = {scenario_id: StrategyClass}.
+- MantItemManager, RacePlanner, and SkillBuyer are scenario-specific helpers
+  constructed fresh at the start of every career.
+"""
+
 import gzip
 import base64
 import msgpack
@@ -36,6 +71,7 @@ def runtime_output_root(base_dir):
             return candidate / "uma_runtime"
     return base.parent / "uma_runtime"
 
+# command_id → human-readable training name used in the action log.
 TRAINING_LABELS = {
     101: "Speed",
     102: "Power",
@@ -50,6 +86,7 @@ TRAINING_LABELS = {
 }
 
 
+# ── CareerRunner ───────────────────────────────────────────────────────────
 class CareerRunner:
     def __init__(self, base_dir):
         self.base_dir = Path(base_dir)
@@ -99,7 +136,20 @@ class CareerRunner:
         if self.report:
             add_event(self.report, row)
 
-    def start(self, client, preset, initial_result, max_steps=2500, burn_clocks=False, dev_mode=False):        
+    def start(self, client, preset, initial_result, max_steps=2500, burn_clocks=False, dev_mode=False):
+        """
+        Start the career loop in a background thread.
+
+        Parameters
+        ----------
+        client : UmaClient            – authenticated API client.
+        preset : dict                 – hydrated preset from PresetStore.
+        initial_result : dict         – raw API response from start_career() or load_career().
+        max_steps : int               – hard iteration cap (safety guard against infinite loops).
+        burn_clocks : bool            – use clock items aggressively to compress turns.
+        dev_mode : bool               – when True the loop runs managed by manage_career_loop()
+                                        in main.py instead of a self-contained thread.
+        """
         with self.lock:
             if self.status["running"]:
                 raise RuntimeError("Career runner already active")
@@ -180,7 +230,7 @@ class CareerRunner:
                         client.wait_turn_delay()
                     last_turn = turn
                 
-                self._mark(turn=turn)
+                self._mark(turn=turn, current_fans=int(chara.get("fans") or 0))
                 self._track_turn_scores(state)
 
                 if turn == 77 and not getattr(self, "dev_mode", False):
@@ -217,8 +267,11 @@ class CareerRunner:
                 
                 self._debug_turn(state, preset)
                 decision = strategy.next_decision(state, preset)
+                # Capture decision trace for diagnostics panel
+                if hasattr(strategy, '_last_trace') and strategy._last_trace.get('rows'):
+                    with self.lock:
+                        self.status['last_decision'] = dict(strategy._last_trace)
 
-                
                 if self.report:
                     add_decision(self.report, state, decision)
                 
@@ -233,6 +286,9 @@ class CareerRunner:
                     chara = data.get("chara_info") or {}
                     self._mark(turn=chara["turn"])
                     decision = strategy.next_decision(state, preset)
+                    if hasattr(strategy, '_last_trace') and strategy._last_trace.get('rows'):
+                        with self.lock:
+                            self.status['last_decision'] = dict(strategy._last_trace)
 
                     if self.report:
                         add_decision(self.report, state, decision)
@@ -255,12 +311,29 @@ class CareerRunner:
                         raise
                 elif decision.action == "command":
                     self._log("command_exec", decision.payload["current_turn"], f"{decision.payload.get('command_type')}:{decision.payload.get('command_id')}:{decision.payload.get('command_group_id')}")
+                    _pre_stats = self._turn_stats(chara)
+                    _failure_rate = int((decision.payload.get("_failure_rate") or 0))
+                    # Grab failure_rate from last mant trace if available
+                    if hasattr(strategy, '_last_trace') and strategy._last_trace.get('rows'):
+                        _failure_rate = strategy._last_trace['rows'][0].get('failure', _failure_rate)
                     self._record_action(decision, chara)
                     try:
                         state = client.exec_command(**decision.payload)
                         data = state.get("data") or {}
                         if data.get("unchecked_event_array"):
                             state = self._drain_events(client, strategy, state)
+                        _post_chara = (data.get("chara_info") or {})
+                        _post_stats = self._turn_stats(_post_chara)
+                        _stat_delta = sum(_post_stats.get(k, 0) - _pre_stats.get(k, 0)
+                                         for k in ('speed','stamina','power','guts','wit','skill_point'))
+                        _outcome = 'failed' if (_failure_rate > 0 and _stat_delta < 5) else 'ok'
+                        _items = self._items_used_names()
+                        self._update_last_action(
+                            outcome=_outcome,
+                            items=_items,
+                            failure_rate=_failure_rate,
+                            stat_delta=_stat_delta,
+                        )
                     except Exception as exc:
                         if "Network error" in str(exc) or "201" in str(exc) or "205" in str(exc) or "208" in str(exc):
                             state = self._fresh_career_state(client, strategy)
@@ -277,7 +350,16 @@ class CareerRunner:
                 elif decision.action == "race":
 
                     self._record_action(decision, chara)
+                    _items_pre_race = self._items_used_names()
                     state = self._race(client, state, preset, decision.payload)
+                    _race_rank = self.status.get("_last_race_rank", 99)
+                    _race_items = self._items_used_names()
+                    _all_race_items = list(dict.fromkeys(_items_pre_race + _race_items))
+                    self._update_last_action(
+                        rank=_race_rank,
+                        outcome='win' if _race_rank == 1 else ('top3' if _race_rank <= 3 else 'lost'),
+                        items=_all_race_items,
+                    )
                 elif decision.action == "race_progress":
 
                     self._record_action(decision, chara)
@@ -312,7 +394,13 @@ class CareerRunner:
                             self._log("finish_reconciled", decision.payload["current_turn"], f"graceful exit: {e}")
                         else:
                             raise
-                    self._mark(last_action="finish", finished=True)
+                    _fin_chara = (state.get('data') or {}).get('chara_info') or {}
+                    self._mark(
+                        last_action="finish",
+                        finished=True,
+                        final_fans=int(_fin_chara.get('fans') or 0),
+                        final_card_id=str(_fin_chara.get('card_id') or ''),
+                    )
                     break
                 else:
 
@@ -437,6 +525,25 @@ class CareerRunner:
                 history[-1] = row
             else:
                 history.append(row)
+
+    def _update_last_action(self, **kwargs):
+        """Patch the most recent action_history row with post-execution debrief fields."""
+        with self.lock:
+            history = self.status.get("action_history") or []
+            if history:
+                history[-1].update(kwargs)
+
+    def _items_used_names(self):
+        """Extract display names of items used this turn from item_manager.use_attempt_events."""
+        from career_bot.items import ITEM_NAMES
+        names = []
+        for event in (self.item_manager.use_attempt_events or []):
+            for entry in (event.get("selected") or event.get("attempt") or []):
+                name = entry.get("name") or ITEM_NAMES.get(int(entry.get("item_id") or 0), "")
+                count = int(entry.get("use_num") or 1)
+                if name:
+                    names.append(name if count == 1 else f"{name} x{count}")
+        return names
 
     def _turn_stats(self, chara):
         if not chara:
@@ -924,6 +1031,8 @@ class CareerRunner:
 
         rank = self._parse_race_rank(res)
         self._log("race_rank", current_turn, f"rank {rank}")
+        with self.lock:
+            self.status["_last_race_rank"] = rank
 
         home_info = (state.get("data") or {}).get("home_info") or {}
         std_clocks = int(home_info.get("available_continue_num", 0))
@@ -957,6 +1066,8 @@ class CareerRunner:
                 res = client.race_start(is_short=is_short, current_turn=current_turn)
                 rank = self._parse_race_rank(res)
                 self._log("race_rank_retry", current_turn, f"rank {rank} after clock")
+                with self.lock:
+                    self.status["_last_race_rank"] = rank
                 with self.lock:
                     self.status["clocks_used"] = int(self.status.get("clocks_used") or 0) + 1
             except Exception as e:
@@ -1185,10 +1296,3 @@ class CareerRunner:
             with self.lock:
                 dh = self.status.setdefault("date_history", [])
                 sh = self.status.setdefault("score_history", [])
-                if not dh or dh[-1] != turn:
-                    dh.append(turn)
-                    sh.append(max_score)
-                    if len(dh) > 48:
-                        dh.pop(0)
-                        sh.pop(0)
-

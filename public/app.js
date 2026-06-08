@@ -1,4 +1,39 @@
+// public/app.js
+// =============
+// Single-page application logic for the Sweepy bot UI.
+//
+// Architecture overview
+// ---------------------
+// The entire app lives inside one IIFE so state is private.
+// Key sections (search for "// ──" to jump):
+//   State & DOM refs        – shared mutable state and cached element handles
+//   Dev / loop controls     – LOOP: ON toggle and delay settings
+//   Mode switching          – SETUP ↔ DIAGNOSTICS tab bar
+//   Diagnostics rendering   – career card, action log, fan metrics
+//   API helpers             – apiJson(), master-data, delay settings
+//   Login / auth            – login form, 2FA, session restore
+//   Career modal            – delete / resume career overlay
+//   Selection               – trainee, deck, parents, friend picking
+//   Selection rendering     – renderParents(), renderFollowParents(), tooltips
+//   Race editor             – per-year race slot picker
+//   Skill editor            – skill priority list, blacklist, auto-buy
+//   Preset config           – stat priority, targets, distance, save/load
+//   Friends panel           – friend support card list and filtering
+//   Career runner           – startCareer(), polling, action history
+//   Fan stats               – STATS tab rendering
+//   Dashboard init          – showDashboardView(), renderDashboard()
+//   App entry point         – restoreSession(), login handler
+//
+// Extending / forking notes
+// --------------------------
+// - All REST calls go through apiJson(url, options) which adds error handling.
+// - The UI polls /api/career/runner every ~2 s while a career is running.
+// - Fan stats are polled via updateDiagMetrics() when the DIAGNOSTICS pane is open.
+// - Selection state lives in the `selection` object; synced to the server via
+//   syncSelectionToServer() after every change so refreshes restore the picks.
+
 (() => {
+// ── State & DOM refs ────────────────────────────────────────────────────────
 const state = {
     needs2fa: false,
     isLoading: false,
@@ -16,6 +51,8 @@ const state = {
     burnClocks: false,
     displayedClocksUsed: 0,
     devEnabled: true,
+    careersLimit: 0,      // 0 = infinite; stop loop after N completions this session
+    sessionCareersStart: 0, // careers_count at session start (for delta tracking)
     consecutiveRunnerFails: 0
 };
 const els = {
@@ -46,6 +83,10 @@ const els = {
     umaCount: document.getElementById('uma-count'),
     cardCount: document.getElementById('card-count'),
     parentCount: document.getElementById('parent-count'),
+    followParentGrid: document.getElementById('follow-parent-grid'),
+    followParentCount: document.getElementById('follow-parent-count'),
+    followParentLoadBtn: document.getElementById('follow-parent-load-btn'),
+    followParentStatus: document.getElementById('follow-parent-status'),
     friendCount: document.getElementById('friend-count'),
     friendStatus: document.getElementById('friend-status'),
     friendRefreshBtn: document.getElementById('friend-refresh-btn'),
@@ -73,45 +114,82 @@ const els = {
     presetAddBtn: document.getElementById('preset-add-btn'),
     presetDelBtn: document.getElementById('preset-del-btn'),
     presetRunningStyle: document.getElementById('preset-running-style'),
+    presetTargetDistance: document.getElementById('preset-target-distance'),
     presetSkillThreshold: document.getElementById('preset-skill-threshold'),
+    presetAutoBuyOverride: document.getElementById('preset-auto-buy-override'),
     presetEditSkillsBtn: document.getElementById('preset-edit-skills-btn'),
     skillModal: document.getElementById('skill-modal'),
     skillSearch: document.getElementById('skill-search'),
     skillList: document.getElementById('skill-list'),
     skillTiersContainer: document.getElementById('skill-tiers-container'),
     skillBlacklistContainer: document.getElementById('skill-blacklist-container'),
+    skillMandatoryContainer: document.getElementById('skill-mandatory-container'),
     skillAddTierBtn: document.getElementById('skill-add-tier-btn'),
     skillModalClose: document.getElementById('skill-modal-close')
 };
         const delaySettingsStorageKey = 'uma_turn_delay_settings';
         const burnClocksStorageKey = 'uma_burn_clocks';
-        const devStorageKey = 'uma_dev_career';
+        // ── Dev / loop controls ────────────────────────────────────────────────
         function syncDevControls() {
             if (!els.devBtn) return;
             els.devBtn.classList.toggle('is-active', state.devEnabled);
-            els.devBtn.innerText = `DEV: ${state.devEnabled ? 'ON' : 'OFF'}`;
+            els.devBtn.innerText = state.devEnabled ? 'LOOP: ON' : 'LOOP: OFF';
+            els.devBtn.style.cursor = 'pointer';
+            els.devBtn.title = 'Toggle auto-loop after each career';
         }
-        function setDevEnabled(value, options = {}) {
-            state.devEnabled = Boolean(value);
+
+        function setDevEnabled(enabled, opts) {
+            state.devEnabled = !!enabled;
             syncDevControls();
-            if (options.persist) {
-                localStorage.setItem(devStorageKey, String(state.devEnabled));
-            }
+
+        // ── Stop-after-N careers control ──────────────────────────────────────
+        const careersLimitBtn = document.getElementById('careers-limit-btn');
+        const CAREERS_LIMIT_OPTIONS = [0, 1, 2, 3, 5, 10]; // 0 = infinite
+
+        function syncCareersLimitBtn() {
+            if (!careersLimitBtn) return;
+            const n = state.careersLimit;
+            careersLimitBtn.innerText = n > 0 ? `STOP: ${n}` : 'STOP: ∞';
+            careersLimitBtn.classList.toggle('is-active', n > 0);
         }
 
-        window.addEventListener('storage', event => {
-            if (event.key === devStorageKey && event.newValue !== null) {
-                setDevEnabled(event.newValue === 'true', { persist: false });
-            }
+        try {
+            const saved = localStorage.getItem('uma_careers_limit');
+            if (saved !== null) state.careersLimit = parseInt(saved, 10) || 0;
+        } catch(e) {}
+        syncCareersLimitBtn();
+
+        if (careersLimitBtn) careersLimitBtn.addEventListener('click', () => {
+            const idx = CAREERS_LIMIT_OPTIONS.indexOf(state.careersLimit);
+            state.careersLimit = CAREERS_LIMIT_OPTIONS[(idx + 1) % CAREERS_LIMIT_OPTIONS.length];
+            try { localStorage.setItem('uma_careers_limit', String(state.careersLimit)); } catch(e) {}
+            syncCareersLimitBtn();
         });
-        const storedDev = localStorage.getItem(devStorageKey);
-        if (storedDev !== null) setDevEnabled(storedDev === 'true', { persist: false });
 
-        if (els.devBtn) {
-            els.devBtn.addEventListener('click', () => {
-                setDevEnabled(!state.devEnabled, { persist: true });
-            });
+        function checkCareersLimit(careersCount) {
+            if (!state.devEnabled || state.careersLimit <= 0) return;
+            const done = careersCount - state.sessionCareersStart;
+            if (done >= state.careersLimit) {
+                setDevEnabled(false, { persist: true });
+                console.log(`[loop] career limit ${state.careersLimit} reached — loop disabled`);
+            }
         }
+            if (opts && opts.persist) {
+                try { localStorage.setItem('uma_loop_enabled', state.devEnabled ? '1' : '0'); } catch(e) {}
+            }
+        }
+
+        // Restore persisted loop preference
+        try {
+            const saved = localStorage.getItem('uma_loop_enabled');
+            if (saved !== null) state.devEnabled = saved === '1';
+        } catch(e) {}
+
+        if (els.devBtn) els.devBtn.addEventListener('click', () => {
+            setDevEnabled(!state.devEnabled, { persist: true });
+        });
+
+        syncDevControls();
 
         function setLoadingScreen(visible) {
             if (!els.loadingScreen) return;
@@ -302,7 +380,349 @@ const els = {
         makeSectionToggle('friends-toggle',  'friends-chevron',  'friends-body',  true);
         makeSectionToggle('trainees-toggle', 'trainees-chevron', 'trainees-body', true);
         makeSectionToggle('parents-toggle',  'parents-chevron',  'parents-body',  true);
-        makeSectionToggle('cards-toggle',    'cards-chevron',    'card-grid-wrapper', false);
+        makeSectionToggle('cards-toggle',    'cards-chevron',    'card-grid-wrapper', true);
+        makeSectionToggle('follow-parents-toggle', 'follow-parents-chevron', 'follow-parents-body', false);
+
+        // ── Tab switching ──
+        const TAB_STORAGE_KEY = 'uma_active_tab';
+        function switchTab(tabId) {
+            document.querySelectorAll('.panel-tab').forEach(btn => {
+                btn.classList.toggle('is-active', btn.dataset.tab === tabId);
+            });
+            document.querySelectorAll('.tab-pane').forEach(pane => {
+                pane.classList.toggle('is-active', pane.id === tabId);
+            });
+            try { localStorage.setItem(TAB_STORAGE_KEY, tabId); } catch(e) {}
+        }
+        document.querySelectorAll('.panel-tab').forEach(btn => {
+            btn.addEventListener('click', () => {
+                switchTab(btn.dataset.tab);
+                if (btn.dataset.tab === 'tab-stats') fetchAndRenderFanStats();
+            });
+        });
+        const savedTab = (() => { try { return localStorage.getItem(TAB_STORAGE_KEY); } catch(e) { return null; } })();
+        if (savedTab && document.getElementById(savedTab)) switchTab(savedTab);
+
+        // ══════════════════════════════════════════════════════════════
+        // MODE SWITCHING (SETUP / DIAGNOSTICS)
+        // ══════════════════════════════════════════════════════════════
+        const MODE_KEY = 'uma_active_mode';
+        let _sessionStartTime = Date.now();
+        let _diagMetricsTimer = 0;
+
+        // ── Mode switching (SETUP ↔ DIAGNOSTICS) ──────────────────────────────
+        function switchMode(mode) {
+            document.querySelectorAll('.mode-btn').forEach(btn => {
+                btn.classList.toggle('is-active', btn.dataset.mode === mode);
+            });
+            document.querySelectorAll('.mode-pane').forEach(pane => {
+                pane.classList.toggle('is-active', pane.id === 'mode-' + mode);
+            });
+            try { localStorage.setItem(MODE_KEY, mode); } catch(e) {}
+            if (mode === 'diagnostics') {
+                refreshDiagnostics();
+                startDiagMetricsTimer();
+            } else {
+                stopDiagMetricsTimer();
+            }
+        }
+
+        function startDiagMetricsTimer() {
+            if (_diagMetricsTimer) return;
+            _diagMetricsTimer = setInterval(updateDiagMetrics, 5000);
+        }
+        function stopDiagMetricsTimer() {
+            if (_diagMetricsTimer) { clearInterval(_diagMetricsTimer); _diagMetricsTimer = 0; }
+        }
+
+        document.querySelectorAll('.mode-btn').forEach(btn => {
+            btn.addEventListener('click', () => switchMode(btn.dataset.mode));
+        });
+        // Restore last mode
+        try {
+            const savedMode = localStorage.getItem(MODE_KEY);
+            if (savedMode) switchMode(savedMode);
+        } catch(e) {}
+
+        // ── Diagnostics rendering ──────────────────────────────────────
+        const MOOD_LABELS = { 1: 'BAD', 2: 'NORMAL', 3: 'GOOD', 4: 'GREAT', 5: 'SUPER' };
+
+        function fmtFans(n) {
+            n = Number(n || 0);
+            if (n >= 1000000) return (n / 1000000).toFixed(2) + 'M';
+            if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+            return n.toLocaleString();
+        }
+        function fmtRuntime(ms) {
+            const s = Math.floor(ms / 1000);
+            if (s < 60) return s + 's';
+            const m = Math.floor(s / 60), rs = s % 60;
+            if (m < 60) return m + 'm ' + rs + 's';
+            return Math.floor(m / 60) + 'h ' + (m % 60) + 'm';
+        }
+
+        function renderDiagCareer(runner, account, selection) {
+            const card = document.getElementById('diag-career-card');
+            const body = document.getElementById('diag-career-body');
+            const badge = document.getElementById('diag-running-badge');
+            if (!card || !body) return;
+
+            const isRunning = runner && runner.running;
+            const career = account && account.career;
+            if (badge) badge.style.display = isRunning ? '' : 'none';
+
+            if (!career || !career.active) {
+                body.innerHTML = '<div class="diag-career-empty">No active career</div>';
+                return;
+            }
+
+            // ── Core stats ──────────────────────────────────────────────────
+            const hist = (runner && runner.action_history) || [];
+            const lastRow = hist.length ? hist[hist.length - 1] : null;
+            const stats = (lastRow && lastRow.stats) || {};
+            const turn = (runner && runner.turn) || 0;
+            const fans = career.fans || 0;
+            const hp = stats.hp != null ? stats.hp : (career.vital || 0);
+            const maxHp = stats.max_hp != null ? stats.max_hp : (career.max_vital || 100);
+            const hpPct = maxHp > 0 ? Math.min(100, Math.round(hp / maxHp * 100)) : 0;
+            const hpColor = hpPct > 60 ? '#22c55e' : hpPct > 30 ? '#f59e0b' : '#ef4444';
+            const mood = stats.motivation != null ? stats.motivation : 3;
+            const moodLabel = MOOD_LABELS[mood] || 'GOOD';
+            const cardId = career.card_id || '';
+            const charaName = career.name || 'Unknown';
+
+            // ── Setup portraits (deck / friend / parents) ────────────────────
+            const sel = selection || {};
+            const deckImgs = (sel.deck && sel.deck.cards || [])
+                .map(c => `<img class="diag-setup-thumb" src="/api/images/${escapeAttr(String(c.id||'10001'))}.png" onerror="this.style.display='none'" title="${escapeAttr(c.name||'')}">`)
+                .join('');
+            const friendImg = sel.friend
+                ? `<img class="diag-setup-thumb" src="/api/images/${escapeAttr(String(sel.friend.support_card_id||'10001'))}.png" onerror="this.style.display='none'" title="${escapeAttr(sel.friend.support_name||'Friend')}">`
+                : '';
+            const parentImgs = [
+                ...(sel.veterans || []).map(v => `<img class="diag-setup-thumb diag-setup-parent" src="/api/images/${escapeAttr(String(v.card_id||'100101'))}.png" onerror="this.style.display='none'" title="${escapeAttr(v.name||'Parent')}">`),
+                sel.guestParent ? `<img class="diag-setup-thumb diag-setup-parent diag-setup-guest" src="/api/images/${escapeAttr(String(sel.guestParent.card_id||'100101'))}.png" onerror="this.style.display='none'" title="${escapeAttr(sel.guestParent.name||'Guest')}">` : ''
+            ].join('');
+            const setupHtml = (deckImgs || friendImg || parentImgs) ? `
+                <div class="diag-setup-row">
+                    <div class="diag-setup-group">${deckImgs}</div>
+                    ${friendImg ? `<div class="diag-setup-sep"></div><div class="diag-setup-group">${friendImg}</div>` : ''}
+                    ${parentImgs ? `<div class="diag-setup-sep"></div><div class="diag-setup-group">${parentImgs}</div>` : ''}
+                </div>` : '';
+
+            // ── Last action debrief ──────────────────────────────────────────
+            const debrief = lastRow || {};
+            const debriefAction = debrief.action || '—';
+            const debriefFacility = debrief.facility || '';
+            const debriefOutcome = debrief.outcome;   // 'ok','failed','win','top3','lost'
+            const debriefItems = debrief.items || [];
+            const debriefFailRate = debrief.failure_rate;
+            const debriefRank = debrief.rank;
+            const debriefDelta = debrief.stat_delta;
+
+            // Outcome badge
+            const outcomeColor = { ok:'#22c55e', failed:'#ef4444', win:'#22c55e', top3:'#f59e0b', lost:'#ef4444' };
+            const outcomeLabel = { ok:'✓ OK', failed:'✗ FAILED', win:'🥇 WIN', top3:'🏅 TOP 3', lost:'✗ LOST' };
+            const outcomeBadge = debriefOutcome
+                ? `<span style="color:${outcomeColor[debriefOutcome]||'#aaa'};font-weight:700;font-size:0.75rem;">${outcomeLabel[debriefOutcome]||debriefOutcome}</span>`
+                : '';
+
+            // Build debrief lines
+            const debriefLines = [];
+            if (debriefAction === 'train' || debriefAction === 'command') {
+                if (debriefFailRate != null) debriefLines.push(`Failure risk: ${debriefFailRate}%`);
+                if (debriefDelta != null)    debriefLines.push(`Stat gain: +${debriefDelta}`);
+            }
+            if (debriefAction === 'race' && debriefRank != null && debriefRank < 99) {
+                debriefLines.push(`Finished rank: ${debriefRank}`);
+            }
+            if (debriefItems.length) debriefLines.push(`Items: ${debriefItems.join(', ')}`);
+
+            const traceTable = (debrief.turn != null) ? `
+                <div class="diag-debrief-box">
+                    <div class="diag-debrief-header">
+                        <span class="diag-debrief-title">${escapeHtml((debriefAction + (debriefFacility ? ' · ' + debriefFacility : '')).toUpperCase())}</span>
+                        ${outcomeBadge}
+                    </div>
+                    ${debriefLines.map(l => `<div class="diag-debrief-line">${escapeHtml(l)}</div>`).join('')}
+                </div>` : '';
+            const traceReason = '';
+
+            body.innerHTML = `
+                <div class="diag-chara-row">
+                    <img class="diag-chara-portrait" src="/api/images/${escapeAttr(String(cardId))}" alt="" onerror="this.style.display='none'">
+                    <div class="diag-chara-info">
+                        <div class="diag-chara-name">${escapeHtml(charaName)}</div>
+                        <div class="diag-chara-sub">Turn ${turn} / 78 · ${fmtFans(fans)} fans</div>
+                        <span class="diag-mood-badge diag-mood-${mood}">${moodLabel}</span>
+                    </div>
+                </div>
+                <div class="diag-hp-row">
+                    <div class="diag-hp-bar-track">
+                        <div class="diag-hp-bar-fill" style="width:${hpPct}%;background:${hpColor};"></div>
+                    </div>
+                    <span class="diag-hp-label">HP ${hp}/${maxHp}</span>
+                </div>
+                <div class="diag-stat-grid">
+                    ${['speed','stamina','power','guts','wit','skill_point'].map((k, i) => {
+                        const labels = ['SPD','STA','PWR','GUT','WIT','SP'];
+                        return `<div class="diag-stat-box">
+                            <span class="diag-stat-label">${labels[i]}</span>
+                            <span class="diag-stat-value">${stats[k] != null ? stats[k] : '—'}</span>
+                        </div>`;
+                    }).join('')}
+                </div>
+                ${setupHtml}
+                ${traceReason}
+                ${traceTable}
+            `;
+
+            // Footer labels
+            const footerLabel = document.getElementById('diag-footer-label');
+            if (footerLabel) footerLabel.textContent = `TURN ${turn} / RACE ${hist.filter(r => r.action === 'race').length}`;
+            const turnBadge = document.getElementById('diag-turn-badge');
+            if (turnBadge) turnBadge.textContent = turn + ' TURNS';
+        }
+
+        function renderDiagLog(runner) {
+            const logEl = document.getElementById('diag-action-log');
+            if (!logEl) return;
+            const hist = (runner && runner.action_history) || [];
+            if (!hist.length) { logEl.innerHTML = '<div style="padding:1rem;opacity:0.35;font-size:0.75rem;">No actions yet.</div>'; return; }
+            const rows = [...hist].reverse().slice(0, 80); // newest first, max 80
+            const body = rows.map(row => {
+                const norm = normalizeHistoryAction(row);
+                const s = row.stats || {};
+                const hp = s.hp != null ? `${s.hp}/${s.max_hp ?? 100}` : '—';
+                const statCells = ['speed','stamina','power','guts','wit','skill_point'].map(k =>
+                    `<td class="diag-log-stat">${s[k] != null ? s[k] : '—'}</td>`
+                ).join('');
+                return `<tr>
+                    <td>${escapeHtml(String(row.turn))}</td>
+                    <td><span class="action-pill action-pill-${escapeAttr(norm.action)}">${escapeHtml(norm.action.toUpperCase())}</span></td>
+                    <td>${escapeHtml(row.facility || '')}</td>
+                    ${statCells}
+                    <td class="diag-log-stat diag-log-hp">${escapeHtml(hp)}</td>
+                </tr>`;
+            }).join('');
+            logEl.innerHTML = `<table>
+                <thead><tr>
+                    <th>TRN</th><th>ACTION</th><th>FACILITY</th>
+                    <th>SPD</th><th>STA</th><th>PWR</th><th>GUT</th><th>WIT</th><th>SP</th><th>HP</th>
+                </tr></thead>
+                <tbody>${body}</tbody>
+            </table>`;
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        let _circleStatsFetched = false;
+        async function fetchCircleStats(refresh = false) {
+            try {
+                const data = await apiJson(`/api/stats/circle${refresh ? '?refresh=true' : ''}`);
+                const clubEl = document.getElementById('diag-club-display');
+                if (!clubEl) return;
+                if (!data.success || !data.circle) {
+                    clubEl.textContent = '—';
+                    return;
+                }
+                const c = data.circle;
+                const members = c.member_num ?? c.member_count;
+                clubEl.innerHTML = [
+                    c.name    ? `<div class="diag-metric-row"><span class="diag-metric-label">NAME</span><span class="diag-metric-value">${c.name}</span></div>` : '',
+                    c.rank != null ? `<div class="diag-metric-row"><span class="diag-metric-label">RANK</span><span class="diag-metric-value">#${c.rank}</span></div>` : '',
+                    c.score != null ? `<div class="diag-metric-row"><span class="diag-metric-label">SCORE</span><span class="diag-metric-value">${fmtFans(c.score)}</span></div>` : '',
+                    members != null ? `<div class="diag-metric-row"><span class="diag-metric-label">MEMBERS</span><span class="diag-metric-value">${members}</span></div>` : '',
+                    c.comment ? `<div class="diag-metric-row"><span class="diag-metric-label">INFO</span><span class="diag-metric-value" style="font-size:0.8em;opacity:0.8">${c.comment}</span></div>` : '',
+                ].filter(Boolean).join('') || '<span style="opacity:0.5">No data</span>';
+            } catch(e) {}
+        }
+        async function updateDiagMetrics() {
+            try {
+                const data = await apiJson('/api/stats/fans');
+                const el = id => document.getElementById(id);
+                const elapsed = Date.now() - _sessionStartTime;
+                if (el('diag-total-fans')) el('diag-total-fans').textContent = fmtFans(Number(data.total_gained || 0));
+                if (el('diag-current-fans')) el('diag-current-fans').textContent = data.current_fans != null ? fmtFans(Number(data.current_fans)) : '—';
+                if (el('diag-runtime')) el('diag-runtime').textContent = fmtRuntime(elapsed);
+                if (el('diag-careers-done')) el('diag-careers-done').textContent = data.careers_count || 0;
+
+                // Club stats: fetch once on first open (backend caches for 5 min)
+                if (!_circleStatsFetched) {
+                    _circleStatsFetched = true;
+                    fetchCircleStats();
+                }
+            } catch(e) {}
+        }
+
+        async function refreshDiagnostics() {
+            try {
+                const data = await apiJson('/api/career/runner');
+                const runner = (data.success && data.runner) ? data.runner : null;
+                // Use the fresh account from the runner endpoint so the career card
+                // always reflects the current run, even mid-loop between careers.
+                const account = data.account || state.account;
+                if (data.account) { state.account = data.account; renderAccountStrip(data.account); }
+                renderDiagCareer(runner, account, data.selection);
+                renderDiagLog(runner);
+            } catch(e) {}
+            updateDiagMetrics();
+        }
+
+        // Wire diagnostics footer buttons
+        const diagResumeBtn = document.getElementById('diag-resume-btn');
+        const diagStopBtn = document.getElementById('diag-stop-btn');
+        const diagSyncBtn = document.getElementById('diag-sync-btn');
+
+        if (diagResumeBtn) diagResumeBtn.addEventListener('click', () => {
+            // Switch to setup and click run
+            switchMode('setup');
+            const runBtn = document.getElementById('start-career-btn');
+            if (runBtn && !runBtn.disabled) runBtn.click();
+        });
+        if (diagStopBtn) diagStopBtn.addEventListener('click', async () => {
+            try {
+                await apiJson('/api/career/runner/stop', { method: 'POST', headers: {'Content-Type':'application/json'}, body: '{}' });
+                setTimeout(refreshDiagnostics, 500);
+            } catch(e) {}
+        });
+        const diagGiveUpBtn = document.getElementById('diag-give-up-btn');
+        if (diagGiveUpBtn) diagGiveUpBtn.addEventListener('click', async () => {
+            if (!confirm('Give up and permanently abandon the current career? This cannot be undone.')) return;
+            diagGiveUpBtn.disabled = true;
+            diagGiveUpBtn.textContent = 'GIVING UP…';
+            try {
+                const data = await apiJson('/api/career/give-up', { method: 'POST', headers: {'Content-Type':'application/json'}, body: '{}' });
+                if (!data.success) throw new Error(data.detail || 'Give up failed');
+                if (data.account) {
+                    renderAccountStrip(data.account);
+                    state.account = data.account;
+                    if (dashData) dashData.account = data.account;
+                }
+                // Stop runner polling and reset setup-tab UI
+                if (state.runnerTimer) { bgClearTimer(state.runnerTimer); state.runnerTimer = 0; }
+                state.runner = null;
+                syncStartButton();
+                renderTeamPanel();
+                refreshDiagnostics();
+            } catch(e) {
+                alert(e.message || 'Give up failed');
+            } finally {
+                diagGiveUpBtn.disabled = false;
+                diagGiveUpBtn.textContent = 'GIVE UP';
+            }
+        });
+        if (diagSyncBtn) diagSyncBtn.addEventListener('click', async () => {
+            try {
+                const data = await apiJson('/api/status');
+                if (data.account) { renderAccountStrip(data.account); state.account = data.account; }
+                refreshDiagnostics();
+            } catch(e) { refreshDiagnostics(); }
+        });
+
+        // Club info is fetched automatically via updateDiagMetrics() → /api/stats/fans circle_info
+
+        // ══════════════════════════════════════════════════════════════
+
         const applyTheme = theme => {
             const nextTheme = theme === 'blue' ? 'blue' : 'pink';
             document.documentElement.dataset.theme = nextTheme;
@@ -331,6 +751,7 @@ const els = {
         };
         const sleep = ms => new Promise(resolve => window.setTimeout(resolve, ms));
         const nextFrame = () => new Promise(resolve => requestAnimationFrame(resolve));
+        // ── API helpers ──────────────────────────────────────────────────────────
         async function waitForDomPaint(frames = 2) {
             for (let i = 0; i < frames; i++) await nextFrame();
         }
@@ -507,6 +928,7 @@ const els = {
             if (event.key !== burnClocksStorageKey || !event.newValue) return;
             setBurnClocks(readLocalSetting(event.newValue, false));
         });
+        // ── Login / auth ─────────────────────────────────────────────────────────
         function resetLoginState() {
             state.isLoading = false;
             els.loginBtn.innerText = state.needs2fa ? 'VALIDATE' : 'LOGIN';
@@ -539,6 +961,7 @@ const els = {
             selection.friend = null;
             selection.trainee = null;
             selection.veterans = [];
+            selection.guestParent = null;
         }
         function hideBrokenImage(img) {
             img.onerror = null;
@@ -599,6 +1022,7 @@ const els = {
         });
 
         const formatNumber = value => Number(value || 0).toLocaleString();
+        // ── Career modal (delete / resume) ───────────────────────────────────────
         function closeCareerModal() {
             els.careerModal.style.display = 'none';
             els.careerModalCopy.innerText = 'This will force-delete the ongoing career.';
@@ -637,6 +1061,7 @@ const els = {
         els.careerModal.addEventListener('click', event => {
             if (event.target === els.careerModal) closeCareerModal();
         });
+        // ── Burn clocks controls ─────────────────────────────────────────────────
         function syncBurnClocksControls() {
             if (!els.burnClocksBtn) return;
             const clocks = state.account ? Number(state.account.clocks || 0) : 0;
@@ -664,6 +1089,7 @@ const els = {
             if (stored !== null) setBurnClocks(stored);
         }
 
+        // ── Account strip ────────────────────────────────────────────────────────
         function renderAccountStrip(account) {
             state.account = account || null;
             if (!account) {
@@ -736,15 +1162,17 @@ const els = {
             19: 'UG', 20: 'UF', 21: 'UE', 22: 'UD'
         };
         let dashData = null;
-        const selection = { deck: null, friend: null, trainee: null, veterans: [], rentalParent: null };
+        const selection = { deck: null, friend: null, trainee: null, veterans: [], rentalParent: null, guestParent: null };
 
+        // ── Selection sync ───────────────────────────────────────────────────────
         async function syncSelectionToServer() {
             try {
                 const payload = {
                     deck: selection.deck,
                     friend: selection.friend,
                     trainee: selection.trainee,
-                    veterans: selection.veterans
+                    veterans: selection.veterans,
+                    guestParent: selection.guestParent || null
                 };
                 await apiJson('/api/selection', {
                     method: 'POST',
@@ -765,17 +1193,28 @@ const els = {
                 document.querySelectorAll('#uma-grid .grid-card.selected').forEach(el => el.classList.remove('selected'));
                 selection.trainee = null;
             } else if (action === 'vet') {
-                const vet = selection.veterans[idx];
-                if (vet != null) {
-                    const card = document.querySelectorAll('#parent-grid .grid-card')[vet._gridIdx];
-                    if (card) card.classList.remove('selected');
+                // Slot 2 may show guestParent when veterans[1] is empty
+                if (idx === 1 && !selection.veterans[1] && selection.guestParent) {
+                    const gp = selection.guestParent;
+                    const gpEl = document.querySelector(
+                        `#parent-grid .grid-card[data-idx="${gp._gridIdx}"], #follow-parent-grid .grid-card[data-follow-idx="${gp._gridIdx}"]`
+                    );
+                    if (gpEl) gpEl.classList.remove('selected');
+                    selection.guestParent = null;
+                } else {
+                    const vet = selection.veterans[idx];
+                    if (vet != null) {
+                        const card = document.querySelectorAll('#parent-grid .grid-card')[vet._gridIdx];
+                        if (card) card.classList.remove('selected');
+                    }
+                    selection.veterans.splice(idx, 1);
                 }
-                selection.veterans.splice(idx, 1);
                 updateVetSelectability();
             }
             renderTeamPanel();
             syncSelectionToServer();
         }
+        // ── Start validation ─────────────────────────────────────────────────────
         function getStartMissingReason() {
             const activeCareer = state.account && state.account.career && state.account.career.active;
             if (!state.selectedPreset) return 'Select a preset';
@@ -783,7 +1222,8 @@ const els = {
             if (!selection.deck) return 'Select a deck';
             if (!selection.friend) return 'Select a friend support';
             if (!selection.trainee) return 'Select a trainee';
-            if (selection.veterans.length < 2) return 'Select two parents';
+            if (selection.veterans.length < 2 && !selection.guestParent) return 'Select two veteran parents';
+            if (selection.veterans.length < 1 && selection.guestParent) return 'Select one veteran parent';
             const parentError = getParentSelectionError();
             if (parentError) return parentError;
             const tp = state.account && state.account.tp ? Number(state.account.tp.current || 0) : 0;
@@ -799,8 +1239,9 @@ const els = {
         function getParentSelectionError() {
             if (!selection.trainee) return '';
             const traineeId = Number(selection.trainee.id);
-            const lineages = selection.veterans.map(getParentLineageCards);
-            if (lineages.length < 2) return '';
+            const allParents = [...selection.veterans];
+            if (selection.guestParent) allParents.push(selection.guestParent);
+            const lineages = allParents.map(getParentLineageCards);
             if (lineages.some(cards => cards[0] === traineeId)) return 'Direct parent is trainee';
             return '';
         }
@@ -818,6 +1259,7 @@ const els = {
                 els.startStatus.classList.toggle('error', false);
             }
         }
+        // ── Team panel (selected trainee / deck / parents) ───────────────────────
         function renderTeamPanel() {
             document.getElementById('dashboard-view').classList.add('active');
             function setSlot(id, role, content, action, idx, emptyText = 'select') {
@@ -875,35 +1317,42 @@ const els = {
             } else {
                 setSlot('team-slot-trainee', 'Trainee', null, 'trainee', null, 'select trainee');
             }
-            ['team-slot-vet1', 'team-slot-vet2'].forEach((id, i) => {
-                const vet = selection.veterans[i];
-                if (vet) {
-                    setSlot(id, `Parent ${i + 1}`, `
+            const slotDefs = [
+                { id: 'team-slot-vet1', parent: selection.veterans[0], label: 'Parent 1' },
+                { id: 'team-slot-vet2', parent: selection.veterans[1] || selection.guestParent, label: selection.veterans[1] ? 'Parent 2' : 'Parent 2 (Follow)' },
+            ];
+            slotDefs.forEach(({ id, parent, label }, i) => {
+                if (parent) {
+                    const isFollow = parent.from_follow;
+                    setSlot(id, label, `
                         <div class="team-item-body">
-                            <img class="team-item-portrait" src="/api/images/${vet.card_id || '100101'}.png" onerror="hideBrokenImage(this)">
+                            <img class="team-item-portrait" src="/api/images/${parent.card_id || '100101'}.png" onerror="hideBrokenImage(this)">
                             <div class="team-item-text">
-                                <span class="team-item-name">${vet.name || 'Unknown'}</span>
-                                <span class="team-item-sub">${rankMap[vet.rank] || '??'}</span>
+                                <span class="team-item-name">${parent.name || 'Unknown'}</span>
+                                <span class="team-item-sub">${isFollow ? ('FOLLOW · ' + (parent.owner_name || '')) : (rankMap[parent.rank] || '??')}</span>
                             </div>
                         </div>
                     `, 'vet', i, 'select parent');
                 } else {
-                    setSlot(id, `Parent ${i + 1}`, null, 'vet', i, 'select parent');
+                    setSlot(id, label, null, 'vet', i, 'select parent');
                 }
             });
             syncStartButton();
         }
                 function updateVetSelectability() {
-            const full = selection.veterans.length >= 2;
-            document.querySelectorAll('#parent-grid .grid-card').forEach(card => {
-                if (card.classList.contains('selected')) {
-                    card.classList.remove('vet-full');
-                } else {
-                    card.classList.toggle('vet-full', full);
+                    const full = selection.veterans.length >= 2;
+                    document.querySelectorAll('#parent-grid .grid-card, #follow-parent-grid .grid-card').forEach(card => {
+                        const idx = parseInt(card.getAttribute('data-idx') || card.getAttribute('data-follow-idx') || '-1');
+                        const p = dashData.parents[idx];
+                        const isRental = p && (p.is_guest || p.from_follow);
+                        if (card.classList.contains('selected') || isRental) {
+                            card.classList.remove('vet-full');
+                        } else {
+                            card.classList.toggle('vet-full', full);
+                        }
+                    });
+                    syncStartButton();
                 }
-            });
-            syncStartButton();
-        }
         function clampValue(value, min, max) {
             return Math.min(Math.max(value, min), max);
         }
@@ -954,6 +1403,7 @@ const els = {
         window.addEventListener('resize', () => {
             if (activeSparkCard && activeSparkTooltip) positionSparkTooltip(activeSparkCard, activeSparkTooltip);
         });
+        // ── Friends helpers ──────────────────────────────────────────────────────
         function friendKey(friend) {
             return `${friend.viewer_id}:${friend.support_card_id}`;
         }
@@ -1035,6 +1485,7 @@ const els = {
                 };
             }
         }
+        // ── Race editor ──────────────────────────────────────────────────────────
         async function loadRaceData() {
             try {
                 const raceRes = await fetch('/assets/data/uma_race_data.json');
@@ -1266,6 +1717,7 @@ const els = {
             { id: 'red', label: 'Red', color: '#f87171', iconPrefixes: ['3001', '3002', '3004', '3005', '3007'] }
         ];
 
+        // ── Skill editor ─────────────────────────────────────────────────────────
         async function loadSkillData() {
             if (skillDataCache) return skillDataCache;
             try {
@@ -1343,12 +1795,19 @@ const els = {
         function renderSkillList() {
             const query = (els.skillSearch?.value || '').toLowerCase();
             const skills = skillDataCache || [];
-            
+            const preset = getCurrentPreset() || {};
+            const STYLE_TAG = {1: 101, 2: 102, 3: 103, 4: 104};
+            const DIST_TAG = {1: 201, 2: 202, 3: 203, 4: 204};
+            const autoTags = new Set([
+                STYLE_TAG[preset.running_style],
+                DIST_TAG[preset.target_distance],
+            ].filter(Boolean));
+
             let count = 0;
             let html = '';
             for (const s of skills) {
                 if (query && !s.name.toLowerCase().includes(query)) continue;
-                
+
                 if (activeSkillFilter !== null) {
                     const skillTags = s.tags || [];
                     if (activeSkillFilter === 'turf') {
@@ -1357,19 +1816,32 @@ const els = {
                         if (!skillTags.includes(activeSkillFilter)) continue;
                     }
                 }
-                
+
                 if (activeColorFilter !== null) {
                     const iconId = String(s.icon_id || '');
                     const colorFilter = COLOR_FILTERS.find(filter => filter.id === activeColorFilter);
                     const skillColor = colorFilter && colorFilter.iconPrefixes.some(prefix => iconId.startsWith(prefix)) ? activeColorFilter : 'none';
-                    
+
                     if (skillColor !== activeColorFilter) continue;
                 }
-                
+
+                const skillTags = s.tags || [];
+                const mandatoryList = preset.mandatory_skill_list || [];
+                const isMandatory = mandatoryList.includes(s.name);
+                const isStyleAuto = !isMandatory && autoTags.size > 0 && skillTags.some(t => [101, 102, 103, 104].includes(t) && autoTags.has(t));
+                const isDistAuto = !isMandatory && autoTags.size > 0 && skillTags.some(t => [201, 202, 203, 204].includes(t) && autoTags.has(t));
+                const isAuto = isStyleAuto || isDistAuto;
+                const autoBadge = isMandatory
+                    ? `<span style="font-size:0.65rem;padding:0.1rem 0.4rem;border-radius:3px;background:#f59e0b22;color:#f59e0b;border:1px solid #f59e0b55;white-space:nowrap;">MANDATORY</span>`
+                    : isAuto
+                    ? `<span style="font-size:0.65rem;padding:0.1rem 0.4rem;border-radius:3px;background:${isStyleAuto ? '#7c3aed33' : '#0369a133'};color:${isStyleAuto ? '#a78bfa' : '#38bdf8'};border:1px solid ${isStyleAuto ? '#7c3aed66' : '#0369a166'};white-space:nowrap;">${isStyleAuto ? 'AUTO·STYLE' : 'AUTO·DIST'}</span>`
+                    : '';
+
                 count++;
-                
+
                 html += `<div class="skill-list-item" data-name="${escapeAttr(s.name)}" style="padding: 0.5rem; background: rgba(255,255,255,0.03); border-radius: 4px; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: background 0.1s;">
                     <span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-main); font-size: 0.85rem;">${escapeHtml(s.name)}</span>
+                    ${autoBadge}
                 </div>`;
             }
             
@@ -1390,11 +1862,13 @@ const els = {
             }
         }
 
+        // activeEditTier: number = tier idx, null = blacklist, 'mandatory' = mandatory list
         function renderSkillEditorRightSide() {
             const current = getCurrentPreset();
             if (!current) {
                 if (els.skillTiersContainer) els.skillTiersContainer.innerHTML = '';
                 if (els.skillBlacklistContainer) els.skillBlacklistContainer.innerHTML = '';
+                if (els.skillMandatoryContainer) els.skillMandatoryContainer.innerHTML = '';
                 return;
             }
 
@@ -1434,6 +1908,17 @@ const els = {
                 ).join('');
             }
 
+            if (els.skillMandatoryContainer) {
+                const isMandActive = activeEditTier === 'mandatory';
+                els.skillMandatoryContainer.classList.toggle('is-active', isMandActive);
+                const mandList = current.mandatory_skill_list || [];
+                els.skillMandatoryContainer.innerHTML = mandList.map(s =>
+                    `<div class="skill-tag" style="background:#f59e0b22;border-color:#f59e0b55;color:#f59e0b;">
+                        ${escapeHtml(s)} <span class="skill-tag-del" data-mandatory="true" data-skill="${escapeAttr(s)}">&times;</span>
+                    </div>`
+                ).join('');
+            }
+
             els.skillTiersContainer?.querySelectorAll('.skill-tier-dropzone').forEach(el => {
                 el.addEventListener('click', (e) => {
                     if (e.target.classList.contains('tier-del-btn') || e.target.classList.contains('skill-tag-del')) return;
@@ -1448,6 +1933,13 @@ const els = {
                     renderSkillEditorRightSide();
                 };
             }
+            if (els.skillMandatoryContainer) {
+                els.skillMandatoryContainer.onclick = (e) => {
+                    if (e.target.classList.contains('skill-tag-del')) return;
+                    activeEditTier = 'mandatory';
+                    renderSkillEditorRightSide();
+                };
+            }
 
             els.skillTiersContainer?.querySelectorAll('.tier-del-btn').forEach(btn => {
                 btn.addEventListener('click', async () => {
@@ -1455,7 +1947,7 @@ const els = {
                     current.learn_skill_list = current.learn_skill_list || [];
                     current.learn_skill_list.splice(idx, 1);
                     if (activeEditTier === idx) activeEditTier = null;
-                    else if (activeEditTier > idx) activeEditTier--;
+                    else if (typeof activeEditTier === 'number' && activeEditTier > idx) activeEditTier--;
                     await savePresetConfig();
                     renderSkillEditorRightSide();
                 });
@@ -1464,7 +1956,9 @@ const els = {
             document.querySelectorAll('.skill-tag-del').forEach(btn => {
                 btn.addEventListener('click', async () => {
                     const skillName = btn.getAttribute('data-skill');
-                    if (btn.hasAttribute('data-blacklist')) {
+                    if (btn.hasAttribute('data-mandatory')) {
+                        current.mandatory_skill_list = (current.mandatory_skill_list || []).filter(s => s !== skillName);
+                    } else if (btn.hasAttribute('data-blacklist')) {
                         current.learn_skill_blacklist = current.learn_skill_blacklist.filter(s => s !== skillName);
                     } else {
                         const tierIdx = parseInt(btn.getAttribute('data-tier'));
@@ -1480,7 +1974,12 @@ const els = {
             const current = getCurrentPreset();
             if (!current) return;
 
-            if (activeEditTier === null) {
+            if (activeEditTier === 'mandatory') {
+                if (!current.mandatory_skill_list) current.mandatory_skill_list = [];
+                if (!current.mandatory_skill_list.includes(name)) {
+                    current.mandatory_skill_list.push(name);
+                }
+            } else if (activeEditTier === null) {
                 if (!current.learn_skill_blacklist) current.learn_skill_blacklist = [];
                 if (!current.learn_skill_blacklist.includes(name)) {
                     current.learn_skill_blacklist.push(name);
@@ -1512,6 +2011,82 @@ const els = {
             renderSkillEditorRightSide();
         }
 
+        const STAT_NAMES = ["Speed", "Stamina", "Power", "Guts", "Wit"];
+        const STAT_COLORS = ["#4e8ef7", "#e05555", "#e07a30", "#4caf7d", "#d4b84e"];
+
+        // ── Stat priority & targets ──────────────────────────────────────────────
+        function renderStatPriority(priority, idealTargets, minTargets) {
+            const list = document.getElementById('stat-priority-list');
+            if (!list) return;
+            const order = (Array.isArray(priority) && priority.length === 5) ? priority : [0, 1, 2, 3, 4];
+            const ideals = (Array.isArray(idealTargets) && idealTargets.length === 5) ? idealTargets : [0, 0, 0, 0, 0];
+            const mins = (Array.isArray(minTargets) && minTargets.length === 5) ? minTargets : [0, 0, 0, 0, 0];
+            list.innerHTML = '';
+            order.forEach((statIdx, rank) => {
+                const item = document.createElement('div');
+                item.draggable = true;
+                item.dataset.statIdx = statIdx;
+                item.style.cssText = `display:flex;align-items:center;gap:0.5rem;padding:0.4rem 0.7rem;border-radius:6px;cursor:grab;user-select:none;background:color-mix(in srgb,${STAT_COLORS[statIdx]} 15%,var(--bg-surface,#1e1e2e));border:1px solid color-mix(in srgb,${STAT_COLORS[statIdx]} 35%,transparent);font-size:0.82rem;font-weight:600;letter-spacing:0.04em;`;
+                const inputStyle = `width:4.5rem;padding:0.15rem 0.35rem;border-radius:4px;border:1px solid color-mix(in srgb,${STAT_COLORS[statIdx]} 40%,transparent);background:var(--bg-input,#12121c);color:var(--text-primary,#e0e0e0);font-size:0.78rem;font-weight:500;text-align:center;cursor:text;`;
+                item.innerHTML = `<span style="color:${STAT_COLORS[statIdx]};font-size:1rem;line-height:1;">⠿</span><span class="sp-rank" style="color:${STAT_COLORS[statIdx]};min-width:1.4rem;">#${rank+1}</span><span style="flex:1;">${STAT_NAMES[statIdx]}</span><label style="display:flex;align-items:center;gap:0.25rem;font-size:0.72rem;font-weight:400;color:var(--text-secondary,#aaa);">Ideal<input class="sp-ideal" type="number" min="0" max="2000" step="1" value="${ideals[statIdx] || 0}" style="${inputStyle}" draggable="false"></label><label style="display:flex;align-items:center;gap:0.25rem;font-size:0.72rem;font-weight:400;color:var(--text-secondary,#aaa);">Min<input class="sp-min" type="number" min="0" max="2000" step="1" value="${mins[statIdx] || 0}" style="${inputStyle}" draggable="false"></label>`;
+
+                // Prevent drag when clicking inputs
+                item.querySelectorAll('input').forEach(inp => {
+                    inp.addEventListener('mousedown', e => e.stopPropagation());
+                    inp.addEventListener('change', () => savePresetConfig());
+                });
+
+                item.addEventListener('dragstart', e => {
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/plain', String(statIdx));
+                    item.style.opacity = '0.4';
+                    list._dragging = item;
+                });
+                item.addEventListener('dragend', () => {
+                    item.style.opacity = '';
+                    list._dragging = null;
+                    [...list.children].forEach((el, i) => {
+                        el.querySelector('.sp-rank').textContent = `#${i+1}`;
+                    });
+                    savePresetConfig();
+                });
+                item.addEventListener('dragover', e => {
+                    e.preventDefault();
+                    const dragging = list._dragging;
+                    if (!dragging || dragging === item) return;
+                    const rect = item.getBoundingClientRect();
+                    if (e.clientY < rect.top + rect.height / 2) {
+                        list.insertBefore(dragging, item);
+                    } else {
+                        list.insertBefore(dragging, item.nextSibling);
+                    }
+                });
+                list.appendChild(item);
+            });
+        }
+
+        function getStatPriorityFromDOM() {
+            const list = document.getElementById('stat-priority-list');
+            if (!list) return [0, 1, 2, 3, 4];
+            return [...list.querySelectorAll('[data-stat-idx]')].map(el => parseInt(el.dataset.statIdx));
+        }
+
+        function getStatTargetsFromDOM() {
+            const list = document.getElementById('stat-priority-list');
+            const ideals = [0, 0, 0, 0, 0];
+            const mins = [0, 0, 0, 0, 0];
+            if (!list) return { ideals, mins };
+            list.querySelectorAll('[data-stat-idx]').forEach(el => {
+                const idx = parseInt(el.dataset.statIdx);
+                if (idx >= 0 && idx < 5) {
+                    ideals[idx] = parseInt(el.querySelector('.sp-ideal')?.value) || 0;
+                    mins[idx] = parseInt(el.querySelector('.sp-min')?.value) || 0;
+                }
+            });
+            return { ideals, mins };
+        }
+
+        // ── Preset config save / load ────────────────────────────────────────────
         async function savePresetConfig() {
             if (!state.selectedPreset || !state.presets) return;
             const current = getCurrentPreset();
@@ -1519,6 +2094,13 @@ const els = {
 
             current.learn_skill_threshold = parseInt(els.presetSkillThreshold.value) || 888;
             current.running_style = parseInt(els.presetRunningStyle?.value) || 1;
+            current.target_distance = parseInt(els.presetTargetDistance?.value) || 0;
+            current.auto_buy_override_threshold = els.presetAutoBuyOverride ? els.presetAutoBuyOverride.checked : true;
+            if (!Array.isArray(current.mandatory_skill_list)) current.mandatory_skill_list = [];
+            current.stat_priority = getStatPriorityFromDOM();
+            const { ideals, mins } = getStatTargetsFromDOM();
+            current.stat_ideal_targets = ideals;
+            current.stat_min_targets = mins;
 
             try {
                 await apiJson('/api/presets', {
@@ -1536,6 +2118,9 @@ const els = {
 
             els.presetSkillThreshold.value = current.learn_skill_threshold || 888;
             if (els.presetRunningStyle) els.presetRunningStyle.value = current.running_style || 1;
+            if (els.presetTargetDistance) els.presetTargetDistance.value = current.target_distance || 0;
+            if (els.presetAutoBuyOverride) els.presetAutoBuyOverride.checked = current.auto_buy_override_threshold !== false;
+            renderStatPriority(current.stat_priority || [0, 1, 2, 3, 4], current.stat_ideal_targets || [0,0,0,0,0], current.stat_min_targets || [0,0,0,0,0]);
         }
 
         function bindPresetHandlers() {
@@ -1552,6 +2137,8 @@ const els = {
             const saveHandler = () => savePresetConfig();
             els.presetSkillThreshold?.addEventListener('change', saveHandler);
             els.presetRunningStyle?.addEventListener('change', saveHandler);
+            els.presetTargetDistance?.addEventListener('change', saveHandler);
+            els.presetAutoBuyOverride?.addEventListener('change', saveHandler);
 
             els.presetEditSkillsBtn?.addEventListener('click', () => {
                 if (!state.selectedPreset) return;
@@ -1668,6 +2255,16 @@ const els = {
                 }
             });
 
+            document.getElementById('skill-clear-mandatory-btn')?.addEventListener('click', async () => {
+                const current = getCurrentPreset();
+                if (!current) return;
+                if (current.mandatory_skill_list && current.mandatory_skill_list.length > 0) {
+                    current.mandatory_skill_list = [];
+                    await savePresetConfig();
+                    renderSkillEditorRightSide();
+                }
+            });
+
             els.presetAddBtn?.addEventListener('click', async () => {
                 const newName = prompt("Enter new preset name:");
                 if (!newName || !newName.trim()) return;
@@ -1730,6 +2327,7 @@ const els = {
             });
         }
 
+        // ── Preset list ──────────────────────────────────────────────────────────
         async function loadPresets() {
             try {
                 const res = await apiJson('/api/presets');
@@ -1764,6 +2362,7 @@ const els = {
             await loadRaceData();
         }
 
+        // ── Friends panel ────────────────────────────────────────────────────────
         function renderFriends() {
             const friends = (dashData && dashData.friends) || [];
             clearInvalidFriendSelection();
@@ -1867,6 +2466,7 @@ const els = {
                 });
             });
         }
+        // ── Career runner ────────────────────────────────────────────────────────
         async function startCareer() {
             const reason = getStartMissingReason();
             if (reason || state.isStartingCareer) {
@@ -1888,10 +2488,13 @@ const els = {
                 support_card_ids: selection.deck.cards.map(card => Number(card.id)),
                 friend_viewer_id: Number(selection.friend.viewer_id),
                 friend_card_id: Number(selection.friend.support_card_id),
-                parent_id_1: Number(selection.veterans[0].instance_id),
-                parent_id_2: Number(selection.veterans[1].instance_id),
-                rental_viewer_id: Number(selection.friend?.parent_data?.viewer_id || 0),
-                rental_trained_chara_id: Number(selection.friend?.parent_data?.trained_chara_id || 0),
+                parent_id_1: Number(selection.veterans[0]?.instance_id || 0),
+                parent_id_2: Number(selection.veterans[1]?.instance_id || 0),
+                // Only populate rental fields when the user explicitly picked a GUEST parent.
+                // Never fall back to the friend's parent_data — that's their support card's
+                // linked uma, not a guest legacy parent, and sending it causes result_code 205.
+                rental_viewer_id: Number(selection.guestParent?.guest_viewer_id || selection.guestParent?.owner_viewer_id || 0),
+                rental_trained_chara_id: Number(selection.guestParent?.instance_id || 0),
                 deck_id: Number(selection.deck.id),
                 scenario_id: 4,
                 use_tp: 30,
@@ -1915,7 +2518,6 @@ const els = {
                 state.displayedClocksUsed = Number(data.runner && data.runner.clocks_used || 0);
                 renderAccountStrip(data.account);
                 if (data.account && data.account.career && data.account.career.active) {
-                    autoLoadCareerSelection();
                     renderFriends();
                 }
                 startRunnerPolling();
@@ -1968,9 +2570,15 @@ const els = {
 
                 const rows = (runner.action_history && runner.action_history.length) ? runner.action_history : deriveActionHistory(runner.log || []);
                 if (rows.length) renderActionHistory(rows);
+                // also update diagnostics panel if visible
+                const diagPane = document.getElementById('mode-diagnostics');
+                if (diagPane && diagPane.classList.contains('is-active')) {
+                    renderDiagCareer(runner, state.account, null);
+                    renderDiagLog(runner);
+                }
                 if (runner.running) {
                     els.startStatus.classList.toggle('error', false);
-                    if (!rows.length) els.startStatus.innerText = `Turn ${runner.turn || '?'} / ${runner.last_action || 'running'} / ${runner.steps || 0}`;
+                    if (!rows.length) els.startStatus.innerText = '';
                     return;
                 }
                 if (state.runnerTimer && !state.devEnabled) {
@@ -1993,6 +2601,11 @@ const els = {
                     if (!rows.length) els.startStatus.innerText = `Career finished! Restarting...`;
                     if (state.account && state.account.career) state.account.career.active = false;
                     renderAccountStrip(state.account);
+                    // Check if session career limit has been reached
+                    try {
+                        const statsData = await apiJson('/api/stats/fans');
+                        checkCareersLimit(statsData.careers_count || 0);
+                    } catch(e) {}
                 } else if (runner.steps) {
                     els.startStatus.classList.toggle('error', false);
                     if (!rows.length) els.startStatus.innerText = `Runner stopped after ${runner.steps} steps`;
@@ -2007,45 +2620,11 @@ const els = {
             } catch (e) {}
         }
         function renderActionHistory(rows) {
-            if (!els.startStatus) return;
-            if (!rows.length) {
-                els.startStatus.innerText = '';
-                return;
-            }
-            const formatStatsDetail = row => {
-                const stats = row.stats || {};
-                if (!Object.keys(stats).length) return row.detail || '';
-                return [
-                    `HP ${stats.hp ?? 0}/${stats.max_hp ?? 100}`,
-                    `MOOD ${stats.motivation ?? 0}`,
-                    `SPD ${stats.speed ?? 0} STA ${stats.stamina ?? 0} PWR ${stats.power ?? 0} GUT ${stats.guts ?? 0} WIT ${stats.wit ?? 0} SP ${stats.skill_point ?? 0}`
-                ].join(' | ');
-            };
-            const body = rows.map(row => `
-                    <tr>
-                        <td>${escapeHtml(row.turn)}</td>
-                        <td><span class="action-pill action-pill-${escapeAttr(normalizeHistoryAction(row).action)}">${escapeHtml(normalizeHistoryAction(row).action)}</span></td>
-                        <td>${escapeHtml(row.facility)}</td>
-                        <td class="action-history-detail">${escapeHtml(formatStatsDetail(row))}</td>
-                    </tr>
-                `).join('');
-            els.startStatus.innerHTML = `
-                <div class="action-history-wrap">
-                    <table class="action-history-table">
-                        <thead>
-                            <tr>
-                                <th>TURN</th>
-                                <th>ACTION</th>
-                                <th>FACILITY</th>
-                                <th>DETAIL</th>
-                            </tr>
-                        </thead>
-                        <tbody>${body}</tbody>
-                    </table>
-                </div>
-            `;
-            const wrap = els.startStatus.querySelector('.action-history-wrap');
-            if (wrap) wrap.scrollTop = wrap.scrollHeight;
+            // Action log table lives in the DIAGNOSTICS tab; setup tab shows text only.
+            if (!els.startStatus || !rows.length) return;
+            const last = rows[rows.length - 1];
+            const norm = normalizeHistoryAction(last);
+            els.startStatus.innerText = `T${last.turn} · ${norm.action.toUpperCase()}${last.facility ? ' · ' + last.facility : ''}`;
         }
         function deriveActionHistory(log) {
             return log.filter(item => ['command', 'race', 'race_progress', 'finish', 'api_delay', 'turn_delay', 'complex_delay'].includes(item.action)).map(item => {
@@ -2131,8 +2710,10 @@ const els = {
             event.stopPropagation();
             loadFriends(true);
         });
+        document.getElementById('follow-parent-load-btn')?.addEventListener('click', loadFollowParents);
         els.startCareerBtn.addEventListener('click', startCareer);
 
+        // ── Selection handlers ───────────────────────────────────────────────────
         function selectDeck(index, element) {
             const alreadySelected = element.classList.contains('selected');
             document.querySelectorAll('.deck-container.selected').forEach(card => card.classList.remove('selected'));
@@ -2159,13 +2740,26 @@ const els = {
             syncSelectionToServer();
         }
         function selectParent(index, element) {
-            if (element.classList.contains('vet-full')) return;
+            const parent = dashData.parents[index];
+            const isRental = parent && (parent.is_guest || parent.from_follow);
             if (element.classList.contains('selected')) {
                 element.classList.remove('selected');
-                selection.veterans = selection.veterans.filter(parent => parent._gridIdx !== index);
-            } else if (selection.veterans.length < 2) {
+                if (isRental) {
+                    selection.guestParent = null;
+                } else {
+                    selection.veterans = selection.veterans.filter(p => p._gridIdx !== index);
+                }
+            } else if (isRental) {
+                // Only one rental slot — deselect previous if any
+                if (selection.guestParent !== null) {
+                    const prevEl = document.querySelector(`#parent-grid .grid-card[data-idx="${selection.guestParent._gridIdx}"], #follow-parent-grid .grid-card[data-follow-idx="${selection.guestParent._gridIdx}"]`);
+                    if (prevEl) prevEl.classList.remove('selected');
+                }
+                selection.guestParent = { ...parent, _gridIdx: index };
                 element.classList.add('selected');
-                selection.veterans.push({ ...dashData.parents[index], _gridIdx: index });
+            } else if (!element.classList.contains('vet-full')) {
+                selection.veterans.push({ ...parent, _gridIdx: index });
+                element.classList.add('selected');
             }
             updateVetSelectability();
             renderTeamPanel();
@@ -2191,6 +2785,7 @@ const els = {
                 return !id.includes('{') && !id.includes('-') && !name.includes('Unknown');
             });
         }
+        // ── Grid rendering ───────────────────────────────────────────────────────
         function renderCounts(data) {
             els.umaCount.innerText = `(${data.umas.length})`;
             els.cardCount.innerText = `(${data.supports.length})`;
@@ -2233,6 +2828,7 @@ const els = {
                 <span class="spark-win-chip">G3 ${wins.g3 || 0}</span>
             `;
         }
+        // Builds the lineage tooltip content (factors + wins per family member).
         function renderParentSparks(parent, fallbackImgId) {
             const tree = parent.tree || {};
             return ['self', 'p1', 'p2'].map(key => {
@@ -2255,10 +2851,12 @@ const els = {
             }).join('');
         }
         function renderParents(parents) {
-            els.parentGrid.innerHTML = parents.map(parent => {
+            els.parentGrid.innerHTML = parents.map((parent, i) => {
                 const imgId = parent.card_id || '100101';
-                return `<div class="grid-card">
+                const guestBadge = parent.is_guest ? `<div class="guest-badge">GUEST</div>` : '';
+                return `<div class="grid-card" data-idx="${i}">
                     <div class="rank-badge">${rankMap[parent.rank] || '??'}</div>
+                    ${guestBadge}
                     <img src="/api/images/${imgId}.png" onerror="hideBrokenImage(this)">
                     <div class="sparks-tooltip" style="--spark-bg: url('/api/images/${imgId}.png')">
                         <div class="sparks-tooltip-title"></div>
@@ -2269,12 +2867,79 @@ const els = {
                         </div>
                     </div>
                     <div class="grid-card-overlay">
-                        <span class="grid-card-kicker">ID: ${parent.instance_id || '?'}</span>
+                        <span class="grid-card-kicker">${parent.is_guest ? 'GUEST' : 'ID: ' + (parent.instance_id || '?')}</span>
                         <span class="grid-card-name">${parent.name || 'Unknown'}</span>
                     </div>
                 </div>`;
             }).join('');
         }
+        function renderFollowParents(parents) {
+            if (!els.followParentGrid) return;
+            if (!parents || !parents.length) {
+                els.followParentGrid.innerHTML = '<div style="padding:1rem;color:#a1a1aa;font-size:0.85rem;">No parents found from follows.</div>';
+                return;
+            }
+
+        // Merge into dashData.parents so selectParent() works correctly
+        const startIdx = dashData.parents.length;
+        parents.forEach((p, i) => {
+            p._gridIdx = startIdx + i;
+            dashData.parents.push(p);
+        });
+
+        els.followParentGrid.innerHTML = parents.map((parent, i) => {
+            const imgId = parent.card_id || '100101';
+            const gridIdx = startIdx + i;
+            return `<div class="grid-card selectable" data-follow-idx="${gridIdx}">
+                <div class="rank-badge">${rankMap[parent.rank] || '??'}</div>
+                <img src="/api/images/${imgId}.png" onerror="hideBrokenImage(this)">
+                <div class="sparks-tooltip" style="--spark-bg: url('/api/images/${imgId}.png')">
+                    <div class="sparks-tooltip-title"></div>
+                    <div class="sparks-tooltip-scroll">
+                        <div class="sparks-lineage-grid">
+                            ${renderParentSparks(parent, imgId)}
+                        </div>
+                    </div>
+                </div>
+                <div class="grid-card-overlay">
+                    <span class="grid-card-kicker" style="font-size:0.65rem;opacity:0.75">${escapeHtml(parent.owner_name)}</span>
+                    <span class="grid-card-name">${parent.name || 'Unknown'}</span>
+                </div>
+            </div>`;
+        }).join('');
+
+        els.followParentGrid.querySelectorAll('.grid-card').forEach(el => {
+            el.classList.add('selectable');
+            el.addEventListener('click', () => {
+                const gridIdx = parseInt(el.getAttribute('data-follow-idx'));
+                selectParent(gridIdx, el);
+            });
+        });
+
+        if (els.followParentCount) {
+            els.followParentCount.innerText = `(${parents.length})`;
+        }
+        updateVetSelectability();
+    }
+
+    async function loadFollowParents() {
+        if (!els.followParentLoadBtn) return;
+        els.followParentLoadBtn.disabled = true;
+        if (els.followParentStatus) els.followParentStatus.innerText = 'Loading...';
+        try {
+            const data = await apiJson('/api/follow/parents');
+            if (!data.success) throw new Error(data.detail || 'Failed');
+            renderFollowParents(data.parents);
+            bindSparkTooltips(); // wire hover tooltips for the newly rendered cards
+            if (els.followParentStatus) els.followParentStatus.innerText = `${data.parents.length} parents loaded`;
+        } catch (e) {
+            if (els.followParentStatus) {
+                els.followParentStatus.innerText = e.message || 'Load failed';
+            }
+        } finally {
+            els.followParentLoadBtn.disabled = false;
+        }
+    }
         function renderTrainees(umas) {
             els.umaGrid.innerHTML = umas.map(uma => {
                 const imgId = uma.id || '100101';
@@ -2284,19 +2949,130 @@ const els = {
                 </div>`;
             }).join('');
         }
+        // ── Deck Builder ──
+        const deckBuilder = { cards: [] }; // array of {id, name, rarity, type}
+
+        function renderDeckBuilder() {
+            const slots = document.getElementById('deck-builder-slots');
+            const count = document.getElementById('deck-builder-count');
+            const saveBtn = document.getElementById('deck-builder-save-btn');
+            if (!slots) return;
+            const n = deckBuilder.cards.length;
+            count.textContent = `(${n}/5 cards)`;
+            saveBtn.disabled = n !== 5;
+
+            // 5 fixed slots
+            slots.innerHTML = Array.from({length: 5}, (_, i) => {
+                const card = deckBuilder.cards[i];
+                if (card) {
+                    return `<div class="deck-builder-slot filled" data-slot="${i}" title="${escapeHtml(card.name)}">
+                        <img src="/api/images/${card.id}.png" onerror="hideBrokenImage(this)" style="width:100%;height:100%;object-fit:cover;border-radius:6px;">
+                        <button class="deck-slot-remove" data-slot="${i}" title="Remove">✕</button>
+                    </div>`;
+                }
+                return `<div class="deck-builder-slot empty" data-slot="${i}"><span style="font-size:1.4rem;opacity:0.25;">+</span></div>`;
+            }).join('');
+
+            // remove buttons
+            slots.querySelectorAll('.deck-slot-remove').forEach(btn => {
+                btn.addEventListener('click', e => {
+                    e.stopPropagation();
+                    const idx = parseInt(btn.dataset.slot);
+                    const removed = deckBuilder.cards.splice(idx, 1)[0];
+                    // un-highlight in card grid
+                    if (removed) {
+                        document.querySelectorAll(`#card-grid .grid-card.in-builder[data-card-id="${removed.id}"]`)
+                            .forEach(el => el.classList.remove('in-builder'));
+                    }
+                    renderDeckBuilder();
+                });
+            });
+        }
+
+        function deckBuilderToggleCard(card) {
+            const idx = deckBuilder.cards.findIndex(c => c.id === card.id);
+            if (idx >= 0) {
+                deckBuilder.cards.splice(idx, 1);
+            } else {
+                if (deckBuilder.cards.length >= 5) return; // full
+                deckBuilder.cards.push(card);
+            }
+            renderDeckBuilder();
+        }
+
         function renderSupports(supports) {
             els.cardGrid.innerHTML = supports.map(card => {
                 const imgId = card.id || '10001';
-                return `<div class="grid-card support-card">
+                return `<div class="grid-card support-card" data-card-id="${card.id}" data-card='${JSON.stringify({id:card.id,name:card.name,rarity:card.rarity,type:card.type})}'>
                     <img src="/api/images/${imgId}.png" onerror="hideBrokenImage(this)">
                     <div class="grid-card-overlay">
                         <span class="grid-card-kicker">${(card.rarity || '?') + ' | ' + (card.type || '?')}</span>
                         <span class="grid-card-name">${card.name || 'Unknown'}</span>
                     </div>
+                    <div class="builder-check" style="display:none;">✓</div>
                 </div>`;
             }).join('');
+
+            els.cardGrid.querySelectorAll('.grid-card.support-card').forEach(el => {
+                el.addEventListener('click', () => {
+                    const card = JSON.parse(el.dataset.card);
+                    const inBuilder = deckBuilder.cards.findIndex(c => c.id === card.id) >= 0;
+                    if (!inBuilder && deckBuilder.cards.length >= 5) return;
+                    deckBuilderToggleCard(card);
+                    el.classList.toggle('in-builder', deckBuilder.cards.findIndex(c => c.id === card.id) >= 0);
+                });
+            });
         }
+
+        // Deck builder clear button
+        document.getElementById('deck-builder-clear-btn')?.addEventListener('click', () => {
+            deckBuilder.cards = [];
+            document.querySelectorAll('#card-grid .grid-card.in-builder').forEach(el => el.classList.remove('in-builder'));
+            renderDeckBuilder();
+            const status = document.getElementById('deck-builder-status');
+            if (status) status.textContent = '';
+        });
+
+        // Deck builder save button
+        document.getElementById('deck-builder-save-btn')?.addEventListener('click', async () => {
+            if (deckBuilder.cards.length !== 5) return;
+            const saveBtn = document.getElementById('deck-builder-save-btn');
+            const status = document.getElementById('deck-builder-status');
+            saveBtn.disabled = true;
+            if (status) status.textContent = 'Saving...';
+            try {
+                const res = await apiJson('/api/deck/save', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({deck_id: 1, card_ids: deckBuilder.cards.map(c => Number(c.id))})
+                });
+                if (!res.success) throw new Error(res.detail || 'Save failed');
+                if (status) status.textContent = 'Saved to Slot 1!';
+                // Refresh deck list if dashData updated
+                if (dashData && active_dashboard_data_decks) {
+                    dashData.validDecks = active_dashboard_data_decks.filter(isValidDeck);
+                    renderDecks(dashData.validDecks);
+                } else {
+                    // just re-render with current data
+                    const d1 = deckBuilder.cards.map(c => ({id: c.id, name: c.name, rarity: c.rarity, type: c.type}));
+                    const existing = (dashData?.validDecks || []).filter(d => d.id !== 1);
+                    dashData.validDecks = [{id: 1, name: 'Deck 1', cards: d1}, ...existing];
+                    renderDecks(dashData.validDecks);
+                }
+            } catch (e) {
+                if (status) status.textContent = e.message || 'Save failed';
+            } finally {
+                saveBtn.disabled = deckBuilder.cards.length !== 5;
+            }
+        });
+
+        renderDeckBuilder(); // initial empty state
+
+        // ── Dashboard init ───────────────────────────────────────────────────────
         function showDashboardView(data) {
+            _sessionStartTime = Date.now();
+            // Snapshot careers_count at login so stop-after-N counts from this session
+            apiJson('/api/stats/fans').then(d => { state.sessionCareersStart = d.careers_count || 0; }).catch(() => {});
             document.body.classList.add('dashboard-mode');
             els.loginView.style.display = 'none';
             els.dashboardView.style.display = '';
@@ -2305,6 +3081,11 @@ const els = {
             showNavbar();
             renderAccountStrip(data.account);
             syncDashboardHeight();
+            // preload fan stats if the stats tab is active or was last used
+            try {
+                const ct = localStorage.getItem('uma_active_tab');
+                if (!ct || ct === 'tab-stats') fetchAndRenderFanStats();
+            } catch(e) {}
         }
 
         function autoLoadCareerSelection() {
@@ -2334,11 +3115,22 @@ const els = {
                     dashData.parents.forEach((p, idx) => {
                         const pId = Number(p.instance_id);
                         if ((p1 && pId === Number(p1)) || (p2 && pId === Number(p2))) {
-                            if (selection.veterans.length < 2 && !selection.veterans.find(v => Number(v.instance_id) === pId)) {
-                                p._gridIdx = idx;
-                                selection.veterans.push(p);
-                                const parentEls = document.querySelectorAll('#parent-grid .grid-card');
-                                if (parentEls[idx]) parentEls[idx].classList.add('selected');
+                            const isRental = p.from_follow || p.is_guest;
+                            if (isRental) {
+                                // Game echoes the rental parent ID in succession_trained_chara_id_2
+                                // — put it in guestParent, NOT veterans
+                                if (!selection.guestParent) {
+                                    selection.guestParent = { ...p, _gridIdx: idx };
+                                    const followEl = document.querySelector(`#follow-parent-grid .grid-card[data-follow-idx="${idx}"]`);
+                                    if (followEl) followEl.classList.add('selected');
+                                }
+                            } else {
+                                if (selection.veterans.length < 2 && !selection.veterans.find(v => Number(v.instance_id) === pId)) {
+                                    p._gridIdx = idx;
+                                    selection.veterans.push(p);
+                                    const parentEls = document.querySelectorAll('#parent-grid .grid-card');
+                                    if (parentEls[idx]) parentEls[idx].classList.add('selected');
+                                }
                             }
                         }
                     });
@@ -2380,6 +3172,23 @@ const els = {
                     }
                 });
                 updateVetSelectability();
+            }
+            // Restore follow/guest parent — it won't be in dashData.parents yet (needs load-follows),
+            // but we restore it into selection so the career start request is still correct.
+            if (serverSelection.guestParent) {
+                selection.guestParent = serverSelection.guestParent;
+                // If follow parents happen to already be loaded, highlight the card
+                if (dashData.parents) {
+                    const gpIdx = dashData.parents.findIndex(p =>
+                        Number(p.instance_id) === Number(serverSelection.guestParent.instance_id)
+                    );
+                    if (gpIdx >= 0) {
+                        const el = document.querySelector(
+                            `#parent-grid .grid-card[data-idx="${gpIdx}"], #follow-parent-grid .grid-card[data-follow-idx="${gpIdx}"]`
+                        );
+                        if (el) el.classList.add('selected');
+                    }
+                }
             }
             if (serverSelection.friend) {
                 state.pendingFriendSelection = {
@@ -2426,6 +3235,7 @@ const els = {
             }
         }
 
+        // ── App entry point ──────────────────────────────────────────────────────
         async function restoreSession() {
             try {
                 const data = await apiJson('/api/session?t=' + Date.now());
@@ -2444,3 +3254,113 @@ const els = {
         setLoadingScreen(true);
         restoreSession();
 })();
+        // ── Fan Stats ────────────────────────────────────────────────────────
+        let _fanStatsCache = null;
+
+        function formatFanNumber(n) {
+            n = Number(n || 0);
+            if (n >= 1000000) return (n / 1000000).toFixed(2) + 'M';
+            if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+            return n.toLocaleString();
+        }
+
+        async function fetchAndRenderFanStats() {
+            const panel = document.getElementById('fan-stats-panel');
+            if (!panel) return;
+            try {
+                const data = await apiJson('/api/stats/fans');
+                _fanStatsCache = data;
+                renderFanStats(data);
+            } catch(e) {
+                panel.innerHTML = `<div class="account-pill" style="opacity:0.5">Not logged in</div>`;
+            }
+        }
+
+        function renderFanStats(data) {
+            const panel = document.getElementById('fan-stats-panel');
+            if (!panel || !data) return;
+
+            const circle = data.circle_info;
+            const circleHtml = circle ? `
+                <div class="master-data-panel" style="margin-bottom:0.75rem;">
+                    <div class="dashboard-section-title" style="font-size:0.75rem;margin-bottom:0.4rem;">CLUB</div>
+                    <div style="display:flex;flex-wrap:wrap;gap:0.5rem;">
+                        ${circle.name ? `<div class="account-pill"><span class="label">NAME</span><strong>${circle.name}</strong></div>` : ''}
+                        ${circle.member_count != null ? `<div class="account-pill"><span class="label">MEMBERS</span><strong>${circle.member_count}</strong></div>` : ''}
+                        ${circle.rank != null ? `<div class="account-pill"><span class="label">RANK</span><strong>${circle.rank}</strong></div>` : ''}
+                        ${circle.score != null ? `<div class="account-pill"><span class="label">SCORE</span><strong>${formatFanNumber(circle.score)}</strong></div>` : ''}
+                    </div>
+                </div>` : '';
+
+            const currentFansHtml = data.current_fans != null ? `
+                <div class="account-pill pill-career" style="flex:1;min-width:120px;">
+                    <span class="label">IN CAREER</span>
+                    <strong>${formatFanNumber(data.current_fans)}</strong>
+                </div>` : '';
+
+            const statsHtml = `
+                <div style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-bottom:0.75rem;">
+                    ${currentFansHtml}
+                    <div class="account-pill pill-tp" style="flex:1;min-width:120px;">
+                        <span class="label">SESSION</span>
+                        <strong>+${formatFanNumber(data.session_gained)}</strong>
+                    </div>
+                    <div class="account-pill pill-gold" style="flex:1;min-width:120px;">
+                        <span class="label">TODAY</span>
+                        <strong>+${formatFanNumber(data.today_gained)}</strong>
+                    </div>
+                    <div class="account-pill pill-carrots" style="flex:1;min-width:120px;">
+                        <span class="label">ALL-TIME</span>
+                        <strong>+${formatFanNumber(data.total_gained)}</strong>
+                    </div>
+                    <div class="account-pill" style="flex:1;min-width:120px;opacity:0.7;">
+                        <span class="label">CAREERS</span>
+                        <strong>${data.careers_count || 0}</strong>
+                    </div>
+                </div>`;
+
+            const careers = data.recent_careers || [];
+            const rowsHtml = careers.length === 0
+                ? '<div style="opacity:0.45;font-size:0.8rem;padding:0.5rem 0;">No careers recorded yet.</div>'
+                : `<table style="width:100%;border-collapse:collapse;font-size:0.78rem;">
+                    <thead>
+                        <tr style="opacity:0.55;text-transform:uppercase;font-size:0.7rem;">
+                            <th style="text-align:left;padding:0.2rem 0.4rem;">TIME</th>
+                            <th style="text-align:left;padding:0.2rem 0.4rem;">CHARA</th>
+                            <th style="text-align:right;padding:0.2rem 0.4rem;">FANS END</th>
+                            <th style="text-align:right;padding:0.2rem 0.4rem;">GAINED</th>
+                            <th style="text-align:right;padding:0.2rem 0.4rem;">TURN</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${careers.map(c => `
+                        <tr style="border-top:1px solid rgba(128,128,128,0.15);">
+                            <td style="padding:0.25rem 0.4rem;opacity:0.6;">${(c.timestamp || '').slice(11,16)}</td>
+                            <td style="padding:0.25rem 0.4rem;">${c.chara_name || c.card_id || '-'}</td>
+                            <td style="padding:0.25rem 0.4rem;text-align:right;">${formatFanNumber(c.final_fans)}</td>
+                            <td style="padding:0.25rem 0.4rem;text-align:right;color:var(--accent-color);">+${formatFanNumber(c.fans_gained)}</td>
+                            <td style="padding:0.25rem 0.4rem;text-align:right;opacity:0.6;">${c.final_turn || '-'}</td>
+                        </tr>`).join('')}
+                    </tbody>
+                </table>`;
+
+            const clearBtn = `<div style="margin-top:0.75rem;display:flex;gap:0.5rem;align-items:center;">
+                <button class="btn btn-sm" id="fan-stats-refresh-btn" type="button">↻ REFRESH</button>
+                <button class="btn btn-sm btn-danger" id="fan-stats-clear-btn" type="button">CLEAR HISTORY</button>
+            </div>`;
+
+            panel.innerHTML = circleHtml + statsHtml +
+                `<div class="master-data-panel">
+                    <div class="dashboard-section-title" style="font-size:0.75rem;margin-bottom:0.4rem;">RECENT CAREERS (last 30)</div>
+                    ${rowsHtml}
+                </div>` + clearBtn;
+
+            document.getElementById('fan-stats-refresh-btn').addEventListener('click', fetchAndRenderFanStats);
+            document.getElementById('fan-stats-clear-btn').addEventListener('click', async () => {
+                if (!confirm('Clear all fan stats history?')) return;
+                await apiJson('/api/stats/fans', { method: 'DELETE' });
+                fetchAndRenderFanStats();
+            });
+        }
+        // ─────────────────────────────────────────────────────────────────────
+

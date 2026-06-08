@@ -1,120 +1,188 @@
-<<<<<<< HEAD
-gonna work on other tools for a bit
+# Umamusume Sweepy
 
-
-# Sweepy — /vg/'s Uma Musume Bot (UAT REHASHED)
-
-> [!IMPORTANT]
-> **Install Node with `winget install -e --id OpenJS.NodeJS`, then run `npm i` first.**      
-> **Then go install requirements.txt**
+An automation bot for **Uma Musume Pretty Derby (PC / Steam)** that runs
+"Make a New Track!" (MANT, scenario 4) careers automatically via a local
+web UI.
 
 ---
 
-## click this button for comedic effect (8mins mant lmao)
+## Requirements
 
-<img width="471" height="53" alt="image" src="https://github.com/user-attachments/assets/a2dbe989-f001-4e41-a5b3-1c01c287b97f" />
+| Dependency | Notes |
+|---|---|
+| Python 3.10+ | Tested on 3.13 |
+| Node.js 18+ | Used to generate Steam auth tickets |
+| Uma Musume Pretty Derby | PC version (Steam), must be running |
+| Windows | Hardware fingerprinting uses the Windows registry |
+
+Install Python dependencies:
+
+```
+pip install -r requirements.txt
+```
+
+Node dependencies are installed automatically on first run (`npm install`).
 
 ---
-Looping/ending careers was intentionally removed to prevent another Twitter drama and to avoid aggravating Cygames. I think it’s very clear what “tempt fate” mode + looping can do. I don’t want that to be publicly accessible. Do not ask me for this.     
 
-Furthermore, this takes <3 mins to figure out, so to those who already did: loose lips sink ships. Keep it zipped.    
+## Running
 
-uses lobotobized/halfported sweepy decision engine, no intention of fully porting/upgrading it as I will be migrating to MCTS soon (ts gonna take months given my hardware [nvm that architecture is straight up not realistic for mant]). 
+1. Launch the game and get to the title screen (so the process is alive).
+2. Start the server:
 
+```
+python main.py
+```
 
+3. Open **http://127.0.0.1:1616** in your browser.
 
-<img width="190" height="140" alt="image" src="https://github.com/user-attachments/assets/a376b9e0-832e-45ea-add4-499a9f76a284" />
-<img width="190" height="158" alt="image" src="https://github.com/user-attachments/assets/428a7704-0729-4dc3-890f-246fb0a94774" />
-<img width="190" height="140" alt="image" src="https://github.com/user-attachments/assets/65edac1a-91c0-4559-8393-7432418afa18" />
-<img width="190" height="140" alt="image" src="https://github.com/user-attachments/assets/3193d3ce-2a3a-4a77-9ed6-c04702083b60" />
-<img width="190" height="140" alt="image" src="https://github.com/user-attachments/assets/d58f6376-76c7-455e-a16d-9bb9d92db969" />
-<img width="190" height="140" alt="image" src="https://github.com/user-attachments/assets/d097751f-966f-4f3f-ba5b-3608cac6bdbe" />
-<img width="190" height="140" alt="image" src="https://github.com/user-attachments/assets/671eb304-cb0b-4f02-9023-ea313df2f987" />
-<img width="190" height="140" alt="image" src="https://github.com/user-attachments/assets/f1ecf7d6-1e18-45d6-8143-66b877d9c786" />
-<img width="190" height="140" alt="image" src="https://github.com/user-attachments/assets/94ea9609-54db-4322-a0f3-9168a70932e0" />
-<img width="190" height="140" alt="image" src="https://github.com/user-attachments/assets/d64d2197-217f-40c5-a57e-3ccd5c868e2d" />
-<img width="190" height="140" alt="image" src="https://github.com/user-attachments/assets/cacd2cf3-b880-4b1e-8818-af33a30bcf38" />
-<img width="190" height="140" alt="image" src="https://github.com/user-attachments/assets/3bdd80ec-cb77-4637-9f61-e3f8fab8d85d" />
-<img width="235" height="226" alt="image" src="https://github.com/user-attachments/assets/ffb9960a-347d-4d7f-8c0d-57ff96f72b6a" />
-<img width="317" height="317" alt="image" src="https://github.com/user-attachments/assets/61c4c0dd-85bc-4517-84c1-021fcf5d47fa" />
-<img width="428" height="605" alt="image" src="https://github.com/user-attachments/assets/07ca8a7f-3f89-4667-a5c6-d50ab5b10fe3" />
-=======
-# # Instructions.
+The server injects a Frida hook into the game process on startup to
+capture auth credentials. Once captured, they are saved to
+`data/accounts/<account>.json` and reused on subsequent runs.
 
-# Capable of 200M+ fans per day/ 5min MANT runs, all previous restrictions removed, multiple accounts can be run simultaneously.
-<img width="1216" height="106" alt="image" src="https://github.com/user-attachments/assets/6b0a2c0b-4268-4b2d-8fee-69f0b3160cea" />
+---
 
-# TLDR: Spam Sweepy logo until the "dev" button pops up, click it and "tempt fate", that's it!
-<img width="1876" height="86" alt="image" src="https://github.com/user-attachments/assets/b5bee15f-1d6e-46f6-8779-f6a79f443c79" />
+## Project structure
 
-# Why pay 10k for Indog slave labour like Feirts when one API bot can get you rank 1 for free? Why spend hours a day grinding fans when a bot can do your entire month's grind in a single day?
+```
+umamusume-sweepy/
+├── main.py                    # FastAPI server — entry point
+├── requirements.txt
+│
+├── uma_api/
+│   └── client.py              # Encrypted msgpack API client + Steam auth
+│
+├── career_bot/
+│   ├── runner.py              # CareerRunner — main automation loop
+│   ├── presets.py             # Preset serialization / hydration / storage
+│   ├── items.py               # Item tables + MantItemManager
+│   ├── skills.py              # SkillBuyer — skill purchase logic
+│   ├── races.py               # RacePlanner — race schedule logic
+│   ├── events.py              # EventManager — event choice lookup
+│   ├── delay.py               # Human-like timing helpers (dna_sleep etc.)
+│   ├── master_data.py         # Game master data loader
+│   ├── report.py              # Per-career run report builder
+│   └── scenarios/
+│       ├── base.py            # ScenarioStrategy base class + Decision type
+│       └── mant.py            # MantStrategy — MANT decision engine
+│
+├── public/
+│   ├── index.html             # Single-page UI shell
+│   ├── app.js                 # All frontend logic (one IIFE)
+│   └── styles.css             # All styles
+│
+└── data/                      # Runtime data (created on first run)
+    ├── accounts/              # Saved account configs (JSON)
+    ├── presets/               # User presets (JSON)
+    └── fan_stats.json         # Per-career fan gain history
+```
 
-<img width="1080" height="262" alt="image" src="https://github.com/user-attachments/assets/41fb609c-9c3b-4624-a956-f38143f95b11" />
+---
 
-T500 to T10 in 4 days btw.
+## How a career run works
 
-# ! Instalation for dummies:
+```
+Browser UI
+  └─ POST /api/career/run
+       └─ main.py: start_career_from_request()
+            ├─ UmaClient.pre_single_mode()         # announce intent to server
+            ├─ UmaClient.start_career()            # single_mode_free/start
+            └─ CareerRunner.start(client, preset, result)
+                 └─ background thread loop:
+                      ├─ MantStrategy.next_decision(state, preset)
+                      │    → Decision(action, payload, reason)
+                      ├─ execute via UmaClient (train / race / event / rest)
+                      ├─ update snapshot (polled by UI every 2 s)
+                      └─ repeat until finished or stop_requested
+```
 
-Need python 3.19 or below + tools.
+When **LOOP: ON** is enabled, `manage_career_loop()` in `main.py` manages
+the outer loop: it automatically starts a new career after each finish,
+recording fan gains to `data/fan_stats.json` each time.
 
-Download Eden bot.
+---
 
-In cmd....
+## Presets
 
-cd (file location) example: C:\Users\yourusernamehere\Downloads\Umamusume-API-Bot-main\Umamusume-API-Bot-main
+Presets live in `data/presets/*.json` and are created/edited through the
+UI's **Config** tab. Key fields:
 
-winget install -e --id OpenJS.NodeJS 
+| Field | Description |
+|---|---|
+| `learn_skill_list` | Skill priority rows — first affordable match per row is bought |
+| `mandatory_skill_list` | Always bought if affordable, regardless of list position |
+| `learn_skill_blacklist` | Never buy these skill IDs |
+| `learn_skill_threshold` | SP cost below which auto-buy triggers for style/distance skills |
+| `stat_priority` | Weight order `[Speed, Stamina, Power, Guts, Wit]` |
+| `stat_ideal_targets` | Target values — deficit boosts scoring for under-target stats |
+| `stat_min_targets` | Hard minimum — stronger boost than ideal targets |
+| `target_distance` | Preferred race distance (0 = any) |
+| `extra_race_list` | Additional race program IDs beyond the default schedule |
 
-npm i
+---
 
-Close and call bot in cd again
+## Parent types (Legacy Select)
 
-pip install -r requirements.txt (you will need an older ver of python for this)
+The game distinguishes two parent types:
 
-# Running the bot!
+| UI tab | API field | Notes |
+|---|---|---|
+| Veteran Umamusume | `succession_trained_chara_id_1/2` | Your own trained charas |
+| Guests | `rental_succession_trained_chara` | Borrowed from another player (max 1) |
 
-Make sure your veteran umas are cleared and have no career in progress. Plenty of gems are needed as well. 
+Guest parents show a purple **GUEST** badge in the grid and are routed to
+the rental slot automatically — selecting one as a veteran parent was the
+original cause of `result_code: 500` on career start.
 
-In cmd, cd file location then main.py. Bot will open steam and launch the game close in loading screen, paste the provided address in your browser and sign in using your Steam info, it will ask for a code sent to your email, provide that, and you're in. 
+---
 
-Recommended to use an alt Steam account. Make sure you have no (non-MANT) careers in progress. Rest should be self-explanatory.
+## Forking / extending
 
-# Running multiple bots!
+### Adding a new scenario
 
-Ensure you have multiple seperate folders and keep track. Each bot must have it's own port number, this is located in main.py, line 186, change it to something else, default is 1200, so second bot could be 1201. Each bot needs its own steam account.
+1. Create `career_bot/scenarios/your_scenario.py` subclassing `ScenarioStrategy`.
+2. Implement `next_decision(state, preset) -> Decision`.
+3. Register it in `career_bot/runner.py`:
+   ```python
+   STRATEGIES = {
+       4: MantStrategy,
+       5: YourStrategy,
+   }
+   ```
+4. Add the scenario ID constant in `presets.py` and wire it in `hydrate_preset()`.
 
-Launch first bot until you're in web UI, switch steam accounts, repeat the process. Turn on each bot simoultaneously. First bot acts as an anchor, if this crashes, all bots will crash. We found that we were able to comfortably run 3 accounts at the same time, could try more.
+### Adding a new API call to the game
 
-Daily reset will cause the bots to crash, you must set everything up manually then. 
+In `uma_api/client.py`, add a method on `UmaClient`:
 
-# That's it! If at any point you struggle here, ask Chatgpt for help, if you want to edit the bot, use Claude. Don't bother me, I am not involved with the game anymore. 
+```python
+def your_call(self, arg1, arg2):
+    return self.call('endpoint/name', {'field1': arg1, 'field2': arg2})
+```
 
-# Tips and Tricks:
+`self.call()` handles encryption, SID rolling, error raising, and tracing.
 
-Use burner accounts, they are 5 bucks on g2g(dot)com, use the bot to make two umas for TT, takes 10mins. Now you can use this in your club. 
+### Adding a new REST endpoint (backend → UI)
 
-This and the android bot can be run on a bare metal, gpu enabled virtual machine. databasemart(dot)com provides cheap options, you will need a GPU Dedicated server, some of them can run 10+ accounts. 
+Add a FastAPI route in `main.py` following the existing pattern:
 
-Cap your fans to 30-50M if you care don't want to get banned but at this point who gaf.
+```python
+@app.get("/api/your/endpoint")
+async def your_endpoint():
+    return {"success": True, "data": ...}
+```
 
-2-3 accounts running full time should be enough for T10, 4+ is needed for rank 1. 
+Then call it from `app.js` via `apiJson('/api/your/endpoint')`.
 
+---
 
-<img width="1415" height="928" alt="image" src="https://github.com/user-attachments/assets/0bb28922-f882-4b05-8240-6973a2d6b011" />
+## Runtime output
 
+All runtime files go under `uma_runtime/` (sibling of the repo root).
+Set the `UMA_RUNTIME_DIR` environment variable to redirect them:
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
->>>>>>> 0406589d80e6af433cc52094391ab094c398231c
+```
+uma_runtime/
+├── trace_logs/api_payloads/   # JSONL trace of every API request/response
+└── reports/                   # Per-career run reports
+```

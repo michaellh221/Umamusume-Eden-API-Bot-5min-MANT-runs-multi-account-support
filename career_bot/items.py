@@ -1,4 +1,29 @@
+"""
+career_bot/items.py
+===================
+Item management for MANT careers: in-game shop purchases, item usage, and
+TP restoration.
 
+Key tables
+----------
+ITEM_NAMES       – item_id → display name (all training items).
+SHOP_ITEM_COSTS  – item_id → MANT coin cost (items buyable in the in-run shop).
+TP_RESTORE_ITEMS – item_id → TP restored per use (for pre-career TP refills).
+
+MantItemManager  – stateful helper that decides when to buy/use items during
+                   a career.  One instance is created per career by CareerRunner.
+
+Extending / forking notes
+--------------------------
+- To add a new item, add it to ITEM_NAMES (and SHOP_ITEM_COSTS if it's buyable).
+- TP_RESTORE_ITEMS is checked by start_career_from_request() in main.py to
+  auto-consume TP items before starting a career when the account is short on TP.
+- Summer-specific item logic (mega/whistle/anklet) is aware of SUMMER_CAMP_TURNS
+  and SUMMER_CONSERVE_TURNS from mant.py so it doesn't waste items pre-camp.
+"""
+
+
+# ── Item / shop tables ──────────────────────────────────────────────────────
 ITEM_NAMES = {
     1001: "Speed Notepad",
     1002: "Stamina Notepad",
@@ -55,10 +80,12 @@ ITEM_NAMES = {
     11003: "Glow Sticks",
 }
 
+# Reverse lookup: display name → item_id (used by the UI item selector).
 DISPLAY_TO_ID = {v: k for k, v in ITEM_NAMES.items()}
 
 SLUG_TO_DISPLAY = {name.lower().replace("'", "").replace(" ", "_"): name for name in ITEM_NAMES.values()}
 
+# MANT coin cost for buyable items. Used to check affordability.
 SHOP_ITEM_COSTS = {
     "Speed Notepad": 10, "Stamina Notepad": 10, "Power Notepad": 10, "Guts Notepad": 10, "Wit Notepad": 10,
     "Speed Manual": 15, "Stamina Manual": 15, "Power Manual": 15, "Guts Manual": 15, "Wit Manual": 15,
@@ -78,6 +105,14 @@ SHOP_ITEM_COSTS = {
     "Good-Luck Charm": 40,
     "Artisan Cleat Hammer": 25, "Master Cleat Hammer": 40,
     "Glow Sticks": 15,
+}
+
+# Items usable via item/recovery_tp before a career starts.
+# Maps item_id → TP restored per single use.
+TP_RESTORE_ITEMS = {
+    2001: 20,   # Vita 20
+    2002: 40,   # Vita 40
+    2003: 65,   # Vita 65
 }
 
 AILMENT_CURE_MAP = {
@@ -217,10 +252,13 @@ DEFAULT_ITEM_TIERS = {
 }
 
 
+# ── Helpers ─────────────────────────────────────────────────────────────────
 def display_to_slug(name):
     return str(name or "").lower().replace("'", "").replace(" ", "_")
 
 
+# ── MantItemManager ─────────────────────────────────────────────────────────
+# Tracks item inventory and decides when to buy/use items during a career.
 class MantItemManager:
     def __init__(self):
         self.used_buffs = set()

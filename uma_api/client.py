@@ -1,3 +1,30 @@
+"""
+uma_api/client.py
+=================
+Low-level API client for Uma Musume Pretty Derby (PC / Steam version).
+
+Architecture overview
+---------------------
+- The game uses a custom binary protocol: msgpack payload encrypted with AES-CBC,
+  wrapped in a fixed binary header (HEAD), then base64-encoded.
+- Every request includes a rolling session-ID (SID) derived from an MD5 chain
+  so the server can detect replayed or out-of-order packets.
+- Authentication is a two-step process:
+    1. A Steam session ticket is obtained by running a bundled Node.js helper
+       (ticket_gen.js) via SteamUser npm package.
+    2. The ticket is exchanged with the game server for an auth_key + viewer_id,
+       which are then stored in the account config file.
+
+Extending / forking notes
+--------------------------
+- To add a new API call, call  self.call('endpoint/name', {...payload...}).
+  The client handles encryption, SID rolling, and error raising automatically.
+- StateRecoveryError is raised when the server returns a recoverable transient
+  error (e.g. 213 "server busy"); the runner catches it and retries.
+- TRACE_DIR / "api_payloads" contains a JSONL file per session for debugging.
+  Set  UMA_RUNTIME_DIR  env var to redirect all runtime output.
+"""
+
 import base64
 import json
 import os
@@ -111,11 +138,15 @@ client.on("loggedOn", () => {
 });
 """
 
+# ── Crypto primitives ────────────────────────────────────────────────────
+# SALT is a fixed secret mixed into the MD5 chain that generates SIDs.
+# HEAD is a static binary prefix on every request packet.
 SALT = b'co!=Y;(UQCGxJ_n82'
 HEAD = bytes.fromhex('6b20e2ab6c311330f761d737ce3f3025750850665eea58b6372f8d2f57501eb344bdb7270a9067f5b63cd61f152cfb986cbfbf7a')
 SENSITIVE_ERROR_KEYS = {"auth_key", "steam_session_ticket", "sid", "udid", "device_id"}
 
 
+# ── Error helpers ─────────────────────────────────────────────────────────
 def redact_for_console(value, key=""):
     if key in SENSITIVE_ERROR_KEYS:
         return "<redacted>"
@@ -156,6 +187,10 @@ def format_api_error(ep, rc, res):
         details["data"] = redact_for_console(data)
     return json.dumps(details, ensure_ascii=False, default=str)
 
+# ── Packet crypto ─────────────────────────────────────────────────────────
+# sm5: custom SID derivation – MD5(data + SALT)
+# pack: encrypt msgpack payload → base64 wire format
+# unpack: reverse of pack
 def sm5(data):
     h = hashlib.md5()
     h.update(data)
@@ -194,6 +229,10 @@ def unpack(text, udid):
     p = unpad(AES.new(key, AES.MODE_CBC, get_iv(udid)).decrypt(cipher), 16)
     return msgpack.unpackb(p[4:4+struct.unpack('<I', p[:4])[0]], raw=False, strict_map_key=False)
 
+# ── Hardware fingerprinting ────────────────────────────────────────────────
+# The game server validates that the reported hardware matches the registered
+# device. These helpers read real values from the Windows registry so the
+# fingerprint stays consistent across sessions.
 def get_gpu():
     if platform.system() != "Windows":
         raise RuntimeError(f"Unsupported OS: {platform.system()}. Only Windows is supported for PC info consistency.")
@@ -273,6 +312,9 @@ def get_hwid(seed_string="default"):
         'device_id': device_id
     }
 
+# ── Steam ticket generation ────────────────────────────────────────────────
+# get_ticket() spawns a Node.js subprocess that logs into Steam and retrieves
+# a per-session auth ticket for the game's App ID.
 def check_deps():
     import sys
 
@@ -317,9 +359,22 @@ def get_ticket(u, p, c=''):
     except:
         raise Exception('bad json')
 
+# ── Main client class ──────────────────────────────────────────────────────
 class UmaClient:
 
     def __init__(self, cfg, trace_enabled=True):
+        """
+        Parameters
+        ----------
+        cfg : dict
+            Account config dict (loaded from the JSON file in data/accounts/).
+            Required keys: viewer_id, auth_key, udid, steam_id, steam_session_ticket.
+            Hardware keys (device_id, device_name, etc.) fall back to live registry
+            values if absent.
+        trace_enabled : bool
+            When True, every request/response is appended to a JSONL trace file
+            under UMA_RUNTIME_DIR/trace_logs/api_payloads/.
+        """
         profile = get_hwid(cfg.get('steam_password_seed', 'default'))
 
         self.viewer_id = cfg.get('viewer_id', 0)
@@ -631,9 +686,10 @@ class UmaClient:
                 if ep in {"single_mode_free/gain_skills", "single_mode_free/multi_item_exchange", "single_mode_free/multi_item_use"}:
                     return res
 
-                if retry_208 < 6:
-                    print(f"API error 208 (SERVER BUSY) on {ep}, sleeping and retrying... (attempts left: {retry_208-1})")
-                    dna_sleep(0.6, 1.4, 1.0, 0.1)
+                attempt_num = 6 - retry_208  # 0-based: 0=first retry
+                backoff = min(3.0 + attempt_num * 2.5, 15.0)
+                print(f"API error 208 (SERVER BUSY) on {ep}, sleeping {backoff:.1f}s and retrying... (attempts left: {retry_208-1})")
+                time.sleep(backoff)
                 return self.call(ep, args, retry_208=retry_208 - 1)
             err_detail = format_api_error(ep, rc, res)
             err_msg = f'API error {rc} on {ep}: {err_detail}'
@@ -728,6 +784,38 @@ class UmaClient:
                     continue
                 raise
 
+    def use_tp_item(self, item_id, use_num=1):
+        """Use an item outside of training to restore TP (Trainer Points).
+        Tries multiple endpoint/payload variants since the exact API is unconfirmed."""
+        current_num = self.item_map.get(int(item_id), 0)
+        attempts = [
+            ("item/use",         {"item_id": item_id, "use_num": use_num, "current_num": current_num}),
+            ("user/use_item",    {"item_id": item_id, "use_num": use_num, "current_num": current_num}),
+            ("item/recovery_tp", {"item_id": item_id, "use_num": use_num}),
+            ("item/use_item",    {"item_id": item_id, "use_num": use_num, "current_num": current_num}),
+            ("user/item_use",    {"item_id": item_id, "use_num": use_num, "current_num": current_num}),
+        ]
+        last_err = None
+        for endpoint, payload in attempts:
+            try:
+                result = self.call(endpoint, payload)
+                data = result.get("data", {})
+                if data.get("tp_info"):
+                    self.tp_info = data["tp_info"]
+                item_list = data.get("user_item") or data.get("user_item_array") or data.get("item_list")
+                if isinstance(item_list, list):
+                    for item in item_list:
+                        iid = item.get("item_id")
+                        num = item.get("number")
+                        if iid is not None and num is not None:
+                            self.item_map[int(iid)] = int(num)
+                return result
+            except Exception as e:
+                last_err = e
+                if "102" not in str(e):
+                    raise
+        raise last_err
+
     def recovery_tp(self, count=1):
         total_jewels = self.coin_info.get("fcoin", 0) + self.coin_info.get("coin", 0)
         result = self.call("user/recovery_trainer_point", {
@@ -786,11 +874,35 @@ class UmaClient:
             "platform_os_version": self.platform_os,
         }
 
+    # ── Career / training endpoints ────────────────────────────────────────
     def pre_single_mode(self, exclude_viewer_ids=None):
         payload = {}
         if exclude_viewer_ids:
             payload['exclude_viewer_id_array'] = exclude_viewer_ids
         return self.call('pre_single_mode/index', payload)
+
+    def save_deck(self, deck_id, card_ids, name=None):
+        did = int(deck_id)
+        cids = [int(c) for c in card_ids]
+        deck_name = name or f'Deck {did}'
+        slot_array = [{'support_card_id': c, 'slot': i + 1} for i, c in enumerate(cids)]
+        # Confirmed endpoint: support_card_deck/change_party (captured via Frida sniffer)
+        # Try payload variations until one succeeds
+        attempts = [
+            ('support_card_deck/change_party', {'deck_id': did, 'support_card_id_array': cids}),
+            ('support_card_deck/change_party', {'support_card_deck_id': did, 'support_card_id_array': cids}),
+            ('support_card_deck/change_party', {'deck_id': did, 'support_card_id_array': cids, 'name': deck_name}),
+            ('support_card_deck/change_party', {'deck_id': did, 'support_card_array': slot_array}),
+            ('support_card_deck/change_party', {'support_card_deck_id': did, 'support_card_array': slot_array}),
+            ('support_card_deck/change_party', {'deck_id': did, 'support_card_ids': cids}),
+        ]
+        for ep, payload in attempts:
+            try:
+                return self.call(ep, payload)
+            except Exception as e:
+                if 'API error 102' not in str(e):
+                    raise
+        raise Exception('save_deck: support_card_deck/change_party returned 102 for all payload variants')
 
     def start_career(self, card_id, support_card_ids, friend_viewer_id, friend_card_id,
                      parent_id_1, parent_id_2, scenario_id, deck_id=1, use_tp=30,
@@ -831,6 +943,8 @@ class UmaClient:
             'use_tp': use_tp,
             'current_succession_rank_point': succession_rank_point
         }
+        # succession_trained_chara_id_1/2 → YOUR OWN trained charas (Veteran tab)
+        # rental_succession_trained_chara   → a borrowed chara from another player (Guest tab)
         return self.call('single_mode_free/start', start_payload)
 
     def exec_command(self, command_type, command_id, current_turn, current_vital, command_group_id=0, select_id=0):
