@@ -357,6 +357,28 @@ if support_path.exists():
 
 _load_fan_stats()
 
+# ---------------------------------------------------------------------------
+# Turn delay – persist to / restore from settings.json
+# ---------------------------------------------------------------------------
+SETTINGS_JSON_PATH = base_dir / "settings.json"
+
+def _load_settings_json():
+    try:
+        with open(SETTINGS_JSON_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+def _save_settings_json(patch: dict):
+    """Merge patch into settings.json on disk."""
+    try:
+        data = _load_settings_json()
+        data.update(patch)
+        with open(SETTINGS_JSON_PATH, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+    except Exception as e:
+        print(f"[settings] could not save settings.json: {e}")
+
 def display_support_type(value):
     return {
         "Friends": "Pal",
@@ -384,6 +406,14 @@ def set_turn_delay(min_value, max_value, disabled=False):
     delay_module.TURN_DELAY_MAX = next_max
     delay_module.GLOBAL_DELAYS_DISABLED = next_disabled  # only disables inter-turn wait
     print(f"[delay] turn_delay={next_min:.1f}-{next_max:.1f}s disabled={next_disabled}")
+    # Persist so fate tempo survives server restart
+    _save_settings_json({"turn_delay": {
+        "min": next_min,
+        "max": next_max,
+        "disabled": next_disabled,
+        "restore_min": getattr(delay_module, "TURN_DELAY_RESTORE_MIN", next_min),
+        "restore_max": getattr(delay_module, "TURN_DELAY_RESTORE_MAX", next_max),
+    }})
     return get_turn_delay()
 
 def get_turn_delay():
@@ -396,6 +426,14 @@ def get_turn_delay():
         "restore_max": getattr(delay_module, "TURN_DELAY_RESTORE_MAX", 5.0),
         "disabled": getattr(delay_module, "GLOBAL_DELAYS_DISABLED", False)
     }
+
+# Restore turn delay from settings.json at startup (so fate tempo survives restarts)
+def _restore_turn_delay():
+    cfg = _load_settings_json().get("turn_delay", {})
+    if cfg:
+        set_turn_delay(cfg.get("min", 2.5), cfg.get("max", 5.0), cfg.get("disabled", False))
+
+_restore_turn_delay()
 
 # ── Helpers: state refresh ─────────────────────────────────────────────────
 def update_start_state(data):
@@ -1153,20 +1191,20 @@ async def login(req: LoginRequest):
             "guestParent": None
         }
 
-        has_form_creds = bool(req.username and req.password)
+        # Use Steam credentials from: (1) form submit, (2) cached config, (3) get_ticket()
+        # Only call get_ticket() — which triggers Steam Guard 2FA — if we have no other source.
         if req.steam_id and req.steam_session_ticket:
-            sid = str(req.steam_id)
-            tkt = str(req.steam_session_ticket)
-        elif has_form_creds:
+            cfg['steam_id'] = str(req.steam_id)
+            cfg['steam_session_ticket'] = str(req.steam_session_ticket)
+        elif not (cfg.get('steam_id') and cfg.get('steam_session_ticket')):
+            # No cached steam creds — must call Steam API (may trigger 2FA)
+            if not (req.username and req.password):
+                raise Exception('Steam credentials required')
             sid, tkt = get_ticket(req.username, req.password, req.code)
+            cfg['steam_id'] = sid
+            cfg['steam_session_ticket'] = tkt
         else:
-            raise Exception('Steam credentials required')
-
-        if not cfg.get('steam_id') or not cfg.get('steam_session_ticket'):
-            cfg.update({
-                'steam_id': sid,
-                'steam_session_ticket': tkt,
-            })
+            print("[auth_cache] reusing cached Steam credentials — skipping Steam API call")
         cfg['steam_password_seed'] = req.password
         if not has_fresh_auth_config(cfg):
             raise Exception('Fresh in-game auth capture required; switch to the target in-game account, restart capture, then login again')
@@ -2449,61 +2487,4 @@ def refresh_auth_before_serving(timeout_sec=None):
                         'steam_id',
                         'steam_session_ticket',
                     ):
-                        if wire.get(key) is not None:
-                            payload[key] = wire.get(key)
-                except Exception:
-                    pass
-                captured_data.update(payload)
-                done['ok'] = True
-
-    while time.time() < deadline:
-        try:
-            session = frida.attach(PROCESS_NAME)
-            break
-        except Exception:
-            dna_sleep(1.0, 1.0)
-    
-    if not session:
-        print(f'Error: {PROCESS_NAME} not found within timeout.', flush=True)
-        return False
-
-    try:
-        script = session.create_script(JS_CODE)
-        script.on('message', on_message)
-        script.load()
-
-        while time.time() < deadline:
-            if done['ok']:
-                if has_fresh_auth_config(captured_data):
-                    pending_game_auth_config = dict(captured_data)
-                    dna_sleep(2.0, 4.0)
-                    kill_process_by_name(PROCESS_NAME)
-                    return True
-            dna_sleep(0.5, 0.5)
-    except Exception as e:
-        print(f'Frida injection failed: {e}', flush=True)
-    finally:
-        if session:
-            try:
-                session.detach()
-            except Exception:
-                pass
-
-    print('Auth refresh failed: no fresh credentials captured before timeout.', flush=True)
-    return False
-
-
-if __name__ == "__main__":
-    import uvicorn
-
-    try:
-        subprocess.run(["git", "pull"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    except Exception:
-        pass
-
-    set_console_topmost()
-    kill_listeners_on_port(1616)
-    if not refresh_auth_before_serving():
-        raise SystemExit(1)
-    print("Access the Web UI at: http://127.0.0.1:1616", flush=True)
-    uvicorn.run(app, host="127.0.0.1", port=1616, log_level="error")
+                        if wire.get(key) is

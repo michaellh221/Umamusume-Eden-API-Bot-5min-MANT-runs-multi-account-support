@@ -612,7 +612,7 @@ const els = {
                 </tr></thead>
                 <tbody>${body}</tbody>
             </table>`;
-            logEl.scrollTop = logEl.scrollHeight;
+            logEl.scrollTop = 0;
         }
 
         let _circleStatsFetched = false;
@@ -987,6 +987,7 @@ const els = {
                 } else if (data.success) {
                     localStorage.setItem('saved_username', payload.username);
                     localStorage.setItem('saved_password', payload.password);
+                    _circleStatsFetched = false; // reset so club info re-fetches on next login
                     await renderDashboard(data, { animateIntro: true, waitForIntro: true });
                     state.isLoading = false;
                 } else {
@@ -3362,5 +3363,4 @@ const els = {
                 fetchAndRenderFanStats();
             });
         }
-        // ─────────────────────────────────────────────────────────────────────
-
+        // ───────────────────────────────────────────�
