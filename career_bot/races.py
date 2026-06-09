@@ -81,12 +81,21 @@ class RacePlanner:
         other_enabled = any(cmd.get("command_type") != 4 and cmd.get("is_enable", 0) for cmd in commands)
         if not race_enabled or other_enabled:
             return 0
+        turn = int((data.get("chara_info") or {}).get("turn") or 0)
         for item in data.get("race_condition_array") or []:
             pid = int(item.get("program_id") or 0)
-            if pid:
+            if pid and (turn, pid) not in self.rejected:
                 return pid
         race = data.get("race_start_info") or {}
-        return int(race.get("program_id") or 0)
+        pid = int(race.get("program_id") or 0)
+        if pid and (turn, pid) not in self.rejected:
+            return pid
+        return 0
+
+    def is_debut_race(self, program_id):
+        """Junior Make Debut races are identified by name 'Junior Make Debut'."""
+        info = self.program.get(int(program_id or 0)) or {}
+        return info.get("name") == "Junior Make Debut"
 
     def check_aptitude(self, chara, program_id):
         info = self.program.get(int(program_id or 0)) or {}
@@ -128,11 +137,13 @@ class RacePlanner:
         
         if not valid_wanted:
             chara = data.get("chara_info") or {}
-            fans = int(chara.get("fans") or 0)
-            if fans < 350 and turn > 11:
-                for pid in available:
-                    if (turn, pid) not in self.rejected and self.check_aptitude(chara, pid):
-                        return pid
+            # Run the debut race if available and aptitude is OK (>= B on both
+            # ground and distance). This unlocks the rest of the race schedule.
+            # Any other non-wanted race is skipped — bot will train instead.
+            # The truly forced debut (training disabled) is handled by forced_program().
+            for pid in available:
+                if (turn, pid) not in self.rejected and self.is_debut_race(pid) and self.check_aptitude(chara, pid):
+                    return pid
             return 0
             
         is_mant = int((data.get("chara_info") or {}).get("scenario_id") or 0) == 4

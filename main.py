@@ -46,7 +46,10 @@ import subprocess
 import sys
 
 try:
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", "requirements.txt"])
+    subprocess.check_call(
+        [sys.executable, "-m", "pip", "install", "-q", "-r", "requirements.txt"],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
 except Exception:
     pass
 
@@ -289,6 +292,12 @@ _fan_stats_lock = _threading_mod.Lock()
 _fan_stats = {"careers": []}
 _session_fans_gained = 0
 
+# ── Circle (club) info cache ────────────────────────────────────────────────
+# Loaded once on first /api/stats/circle request; invalidated after each
+# completed career so fans/ranking stay current without hammering the server.
+_cached_circle_info: dict | None = None
+_circle_refresh_needed = True          # True = fetch from game server next call
+
 def _fan_stats_file():
     global FAN_STATS_PATH
     if FAN_STATS_PATH is None:
@@ -314,7 +323,8 @@ def _save_fan_stats():
         print(f"fan_stats save error: {e}")
 
 def record_career_fans(card_id, fans_gained, final_fans, preset_name="", final_turn=0):
-    global _fan_stats, _session_fans_gained
+    global _fan_stats, _session_fans_gained, _circle_refresh_needed
+    _circle_refresh_needed = True  # refresh club fans on next /api/stats/circle call
     chara_name = chara_map.get(str(card_id), f"Uma ({card_id})")
     entry = {
         "timestamp": _dt_mod.now().isoformat(timespec="seconds"),
@@ -339,11 +349,11 @@ master_data_startup_status = master_data.status(base_dir)
 if master_data_startup_status.get("exists"):
     master_data_startup_result = master_data.generate(base_dir)
     if master_data_startup_result.get("success"):
-        print(f"master.mdb data generated: {master_data_startup_status.get('master_mdb_path')}")
+        print(f"[ok] Game data loaded")
     else:
-        print(f"master.mdb data generation failed: {master_data_startup_result.get('detail')}")
+        print(f"[warn] Game data load failed: {master_data_startup_result.get('detail')}")
 elif master_data_startup_status.get("requires_user_action"):
-    print(f"master.mdb requires user action: {master_data_startup_status.get('master_mdb_path')}")
+    print(f"[warn] master.mdb not found at {master_data_startup_status.get('master_mdb_path')}")
 chara_path = base_dir / 'data' / 'chara_list.json'
 support_path = base_dir / 'data' / 'support_list.json'
 images_dir = base_dir / 'data' / 'images'
@@ -405,7 +415,7 @@ def set_turn_delay(min_value, max_value, disabled=False):
     delay_module.TURN_DELAY_MIN = next_min
     delay_module.TURN_DELAY_MAX = next_max
     delay_module.GLOBAL_DELAYS_DISABLED = next_disabled  # only disables inter-turn wait
-    print(f"[delay] turn_delay={next_min:.1f}-{next_max:.1f}s disabled={next_disabled}")
+    # (delay settings applied silently)
     # Persist so fate tempo survives server restart
     _save_settings_json({"turn_delay": {
         "min": next_min,
@@ -457,7 +467,7 @@ def update_start_state(data):
                    or 0)
         if srp:  # only overwrite if we found a real value
             active_start_state['succession_rank_point'] = int(srp)
-        print(f"[start_state] succession_rank_point={active_start_state.get('succession_rank_point', 0)}")
+        pass  # succession_rank_point cached silently
 
 
 def normalize_friend_cards(data):
@@ -1028,7 +1038,6 @@ def start_career_from_request(req):
         data = res.get('data', {})
         active_client.refresh_cached_account_state(data)
         update_start_state(data)
-        # Log any succession-related keys so we can find the right field name
         active_account = get_account_status(data)
         if active_dashboard_data:
             active_dashboard_data["account"] = active_account
@@ -1046,64 +1055,41 @@ def start_career_from_request(req):
 
     tp_info = active_start_state['tp_info']
     current_tp = int(tp_info.get('current_tp') or 0)
-    if req.use_tp and current_tp < req.use_tp:
-        # Try item-based TP restoration first (e.g. "Toughness" item)
-        from career_bot.items import TP_RESTORE_ITEMS
-        for item_id, tp_per_use in TP_RESTORE_ITEMS.items():
-            owned_count = active_client.item_map.get(int(item_id), 0)
-            if owned_count <= 0:
-                continue
-            still_needed = req.use_tp - current_tp
-            uses_needed = min(owned_count, (still_needed + tp_per_use - 1) // tp_per_use)
-            if uses_needed <= 0:
-                continue
-            try:
-                print(f"TP RESTORE: using item {item_id} x{uses_needed} ({tp_per_use} TP each)")
-                active_client.use_tp_item(item_id, uses_needed)
-                tp_info = active_client.tp_info
-                active_start_state['tp_info'] = tp_info
-                current_tp = int(tp_info.get('current_tp') or 0)
-                print(f"TP after item restore: {current_tp}")
-                if current_tp >= req.use_tp:
-                    break
-            except Exception as e:
-                print(f"TP item restore failed for item {item_id}: {e}")
-
-        # Fall back to jewel recovery if still not enough
-        if req.use_tp and current_tp < req.use_tp:
-            for attempt in range(3):
-                try:
-                    needed = ((req.use_tp - current_tp) + 29) // 30
-                    active_client.recovery_tp(needed)
-                    tp_info = active_client.tp_info
-                    active_start_state['tp_info'] = tp_info
-                    current_tp = int(tp_info.get('current_tp') or 0)
-                    if current_tp >= req.use_tp:
-                        break
-                except Exception as e:
-                    if "213" in str(e):
-                        try:
-                            res = active_client.call("load/index", {"adid": ""})
-                            active_client.refresh_cached_account_state(res.get("data", {}))
-                        except Exception:
-                            pass
-                    dna_sleep(1.0, 1.0)
-
-    if req.use_tp and current_tp < req.use_tp:
-        return {"success": False, "detail": f"Not enough TP: {current_tp}/{req.use_tp}"}
     current_money = active_start_state['current_money']
     succession_rank_point = selected_succession_rank_point(req)
 
     try:
         active_client.pre_single_mode([req.friend_viewer_id] if req.friend_viewer_id else [])
-
         dna_sleep(0.5, 1.5)
-
     except Exception as e:
         print("PRE_SINGLE_MODE ERROR:", e)
 
-    
-    # Resolve human-readable names for trainee and both parents for easier debugging
+    # Validate veteran parent IDs against known active_parent_cards.
+    # If any are missing (stale from a previous loop iteration), refresh from
+    # load/index and zero out IDs that still can't be found — a missing parent
+    # causes a 500 from single_mode_free/start.
+    veteran_ids = [pid for pid in (int(req.parent_id_1 or 0), int(req.parent_id_2 or 0)) if pid]
+    if veteran_ids and any(pid not in active_parent_cards for pid in veteran_ids):
+        try:
+            li_res = active_client.call("load/index", {"adid": ""})
+            li_data = (li_res.get("data") or {})
+            for chara in li_data.get("trained_chara") or []:
+                tid = chara.get("trained_chara_id")
+                cid_raw = str(chara.get("card_id", ""))
+                if tid and cid_raw.isdigit():
+                    lineage = [int(cid_raw)] + [int(sc.get("card_id")) for sc in chara.get("succession_chara_array") or [] if sc.get("card_id")]
+                    active_parent_cards[int(tid)] = lineage
+                    active_parent_rank_points[int(tid)] = {"rank": chara.get("rank", 0), "rank_score": chara.get("rank_score", 0)}
+            print("[career] refreshed parent list from load/index")
+        except Exception as _e:
+            print(f"[career] parent refresh failed: {_e}")
+    for attr in ("parent_id_1", "parent_id_2"):
+        pid = int(getattr(req, attr) or 0)
+        if pid and pid not in active_parent_cards:
+            print(f"[career] parent {pid} not found after refresh — clearing")
+            setattr(req, attr, 0)
+
+    # Resolve human-readable names for debug logging
     def _resolve_name(card_id_str):
         return chara_map.get(str(card_id_str), f"Unknown ({card_id_str})")
     trainee_name = _resolve_name(req.card_id)
@@ -1112,6 +1098,29 @@ def start_career_from_request(req):
     parent1_name = _resolve_name(parent1_cards[0]) if parent1_cards else f"Unknown (id={req.parent_id_1})"
     parent2_name = _resolve_name(parent2_cards[0]) if parent2_cards else f"Unknown (id={req.parent_id_2})"
     print(f"[career] start: {trainee_name} | p1={parent1_name} p2={parent2_name} rental={req.rental_trained_chara_id} deck={req.deck_id}")
+
+    if req.use_tp and current_tp < req.use_tp:
+        for attempt in range(3):
+            try:
+                needed = ((req.use_tp - current_tp) + 29) // 30
+                active_client.recovery_tp(needed)
+                tp_info = active_client.tp_info
+                active_start_state['tp_info'] = tp_info
+                current_tp = int(tp_info.get('current_tp') or 0)
+                if current_tp >= req.use_tp:
+                    break
+            except Exception as e:
+                if "213" in str(e):
+                    try:
+                        res = active_client.call("load/index", {"adid": ""})
+                        active_client.refresh_cached_account_state(res.get("data", {}))
+                    except Exception:
+                        pass
+                dna_sleep(1.0, 1.0)
+
+    if req.use_tp and current_tp < req.use_tp:
+        return {"success": False, "detail": f"Not enough TP: {current_tp}/{req.use_tp}"}
+
     result = active_client.start_career(
         card_id=req.card_id,
         support_card_ids=req.support_card_ids,
@@ -1119,10 +1128,8 @@ def start_career_from_request(req):
         friend_card_id=req.friend_card_id,
         parent_id_1=req.parent_id_1,
         parent_id_2=req.parent_id_2,
-
         rental_viewer_id=req.rental_viewer_id,
         rental_trained_chara_id=req.rental_trained_chara_id,
-
         scenario_id=req.scenario_id,
         deck_id=req.deck_id,
         use_tp=req.use_tp,
@@ -1132,8 +1139,9 @@ def start_career_from_request(req):
         difficulty_id=req.difficulty_id,
         difficulty=req.difficulty,
         is_boost=req.is_boost,
-        boost_story_event_id=req.boost_story_event_id
+        boost_story_event_id=req.boost_story_event_id,
     )
+
     return {"success": True, "result": result}
 
 def apply_career_result(result):
@@ -1426,7 +1434,9 @@ async def update_selection(req: UISelectionRequest):
 
 @app.post("/api/logout")
 async def logout():
-    global active_client, active_account, active_dashboard_data, active_start_state, active_parent_cards, active_parent_rank_points, raw_load_index_response, pending_game_auth_config, active_selection
+    global active_client, active_account, active_dashboard_data, active_start_state, active_parent_cards, active_parent_rank_points, raw_load_index_response, pending_game_auth_config, active_selection, _cached_circle_info, _circle_refresh_needed
+    _cached_circle_info = None
+    _circle_refresh_needed = True
     active_client = None
     active_account = None
     active_dashboard_data = None
@@ -1594,15 +1604,18 @@ def manage_career_loop(req, preset, initial_result):
                     )
             except Exception as _e:
                 print(f"fan_stats record error: {_e}")
+        # Always clear career.active once the runner stops, whether the career
+        # finished cleanly, errored out, or was stopped by the user.
+        if active_account and "career" in active_account and active_account["career"]:
+            active_account["career"]["active"] = False
+
         if status.get("last_error"):
             consecutive_fails += 1
             if consecutive_fails >= 3:
                 break
         else:
             consecutive_fails = 0
-            if active_account and "career" in active_account and active_account["career"]:
-                active_account["career"]["active"] = False
-            
+
         if not req.dev_mode:
             break
             
@@ -1912,13 +1925,27 @@ async def get_item_status():
 # ── REST API: circle (club) stats ──────────────────────────────────────────
 @app.get("/api/stats/circle")
 async def get_circle_stats(refresh: bool = False):
-    """Return club info: name from cache, fans/ranking from circle/detail with circle_id."""
+    """Return club info: name from cache, fans/ranking from circle/detail with circle_id.
+
+    Results are cached in _cached_circle_info and only re-fetched from the game
+    server when:
+      - The cache is empty (first call after startup / login)
+      - _circle_refresh_needed is True (set after each completed career)
+      - The caller passes ?refresh=true
+    """
+    global _cached_circle_info, _circle_refresh_needed
+
     if not active_client:
         return {"success": False, "detail": "Not logged in"}
 
+    # Return cached result if it's still valid
+    if _cached_circle_info is not None and not _circle_refresh_needed and not refresh:
+        return {"success": True, "circle": _cached_circle_info}
+
     ld = active_client.cached_load_data or {}
-    cd = ld.get("circle_data") or {}
-    ci = cd.get("circle_info") or {}
+    cd = (ld.get("circle_data") or ld.get("user_circle_info")
+          or ld.get("circle_info_data") or {})
+    ci = cd.get("circle_info") or cd
     name = ci.get("name")
     circle_id = ci.get("circle_id")
 
@@ -1949,9 +1976,10 @@ async def get_circle_stats(refresh: bool = False):
                 res = active_client.call(endpoint, payload)
                 data = res.get("data") or res
                 _parse_circle_response(data)
+                print(f"[circle] fetched via {endpoint}: name={name!r} rank={rank} score={score} members={member_num}")
                 break
             except Exception as e:
-                print(f"[{endpoint}] failed: {e}")
+                print(f"[circle/{endpoint}] failed: {e}")
 
     result = {}
     if name:
@@ -1968,6 +1996,9 @@ async def get_circle_stats(refresh: bool = False):
     if not result:
         return {"success": False, "detail": "No circle data available"}
 
+    # Store in cache; clear the refresh flag
+    _cached_circle_info = result
+    _circle_refresh_needed = False
     return {"success": True, "circle": result}
 
 # ── REST API: fan stats ─────────────────────────────────────────────────────
@@ -2487,4 +2518,61 @@ def refresh_auth_before_serving(timeout_sec=None):
                         'steam_id',
                         'steam_session_ticket',
                     ):
-                        if wire.get(key) is
+                        if wire.get(key) is not None:
+                            payload[key] = wire.get(key)
+                except Exception:
+                    pass
+                captured_data.update(payload)
+                done['ok'] = True
+
+    while time.time() < deadline:
+        try:
+            session = frida.attach(PROCESS_NAME)
+            break
+        except Exception:
+            dna_sleep(1.0, 1.0)
+    
+    if not session:
+        print(f'Error: {PROCESS_NAME} not found within timeout.', flush=True)
+        return False
+
+    try:
+        script = session.create_script(JS_CODE)
+        script.on('message', on_message)
+        script.load()
+
+        while time.time() < deadline:
+            if done['ok']:
+                if has_fresh_auth_config(captured_data):
+                    pending_game_auth_config = dict(captured_data)
+                    dna_sleep(2.0, 4.0)
+                    kill_process_by_name(PROCESS_NAME)
+                    return True
+            dna_sleep(0.5, 0.5)
+    except Exception as e:
+        print(f'Frida injection failed: {e}', flush=True)
+    finally:
+        if session:
+            try:
+                session.detach()
+            except Exception:
+                pass
+
+    print('Auth refresh failed: no fresh credentials captured before timeout.', flush=True)
+    return False
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    try:
+        subprocess.run(["git", "pull"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception:
+        pass
+
+    set_console_topmost()
+    kill_listeners_on_port(1616)
+    if not refresh_auth_before_serving():
+        raise SystemExit(1)
+    print("Access the Web UI at: http://127.0.0.1:1616", flush=True)
+    uvicorn.run(app, host="127.0.0.1", port=1616, log_level="error")

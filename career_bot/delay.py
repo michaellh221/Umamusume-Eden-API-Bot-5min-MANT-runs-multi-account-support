@@ -59,8 +59,8 @@ for ep in _BASE_DELAYS:
 
 
 def simulate_delay(endpoint, client=None):
-    # NOTE: per-endpoint delays are NEVER disabled — bypassing them triggers
-    # server-side bot detection (208 loops → 403 Access Denied).
+    if GLOBAL_DELAYS_DISABLED:
+        return 0.0
     if endpoint not in _BASE_DELAYS:
         target_delay = 0.3 * _USER_SPEED_SHIFT
         mu = math.log(target_delay) - (_USER_SIGMA**2) / 2.0
@@ -79,8 +79,6 @@ def simulate_delay(endpoint, client=None):
     if _dna_rng.random() < _USER_DISTRACTION_CHANCE:
         dt += _dna_rng.uniform(_USER_DISTRACTION_MIN, _USER_DISTRACTION_MAX)
 
-    print(f"Endpoint: {endpoint} | Delay: {dt:.3f}s", flush=True)
-
     if client and hasattr(client, '_last_raw_call_ts'):
         elapsed = time.time() - client._last_raw_call_ts
         actual_sleep = dt - elapsed
@@ -93,7 +91,6 @@ def simulate_delay(endpoint, client=None):
 
 def simulate_turn_delay():
     if GLOBAL_DELAYS_DISABLED:
-        print(f"Endpoint: turn_delay | Delay: 0.000s", flush=True)
         return 0.0
     range_span = TURN_DELAY_MAX - TURN_DELAY_MIN
     target_mean = (((TURN_DELAY_MIN + TURN_DELAY_MAX) / 2.0) + (_dna_rng.uniform(-0.08, 0.08) * range_span)) * _USER_SPEED_SHIFT
@@ -102,7 +99,6 @@ def simulate_turn_delay():
     dt = _dna_rng.lognormvariate(mu, sigma)
     dt = min(TURN_DELAY_MAX * 5.0, max(TURN_DELAY_MIN * 0.5, dt))
     
-    print(f"Endpoint: turn_delay | Delay: {dt:.3f}s", flush=True)
     time.sleep(dt)
 
 def dna_randint(min_val, max_val):

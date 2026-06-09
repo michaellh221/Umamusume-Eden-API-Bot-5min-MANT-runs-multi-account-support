@@ -320,14 +320,8 @@ def check_deps():
 
     node_path = shutil.which('node')
 
-    print("=" * 60)
-    print("PYTHON:", sys.executable)
-    print("NODE:", node_path)
-    print("PATH:", os.environ.get("PATH", ""))
-    print("=" * 60)
-
     if not node_path:
-        raise Exception('node missing')
+        raise Exception('node missing — install Node.js and ensure it is on PATH')
 
     if not os.path.exists(os.path.join(DIR, 'node_modules')):
         subprocess.run(['npm', 'install', '--silent'], check=True, cwd=DIR)
@@ -542,11 +536,13 @@ class UmaClient:
         if data.get('coin_info'):
             self.coin_info = data['coin_info']
 
-        item_list = data.get('user_item') or data.get('user_item_array') or data.get('item_list')
+        item_list = (data.get('user_item') or data.get('user_item_array')
+                     or data.get('item_list') or data.get('user_item_list')
+                     or data.get('item_array'))
         if isinstance(item_list, list):
             for item in item_list:
                 iid = item.get('item_id')
-                num = item.get('number')
+                num = item.get('number') if item.get('number') is not None else item.get('num')
                 if iid is not None and num is not None:
                     self.item_map[int(iid)] = int(num)
 
@@ -661,11 +657,13 @@ class UmaClient:
                 self.coin_info = data['coin_info']
             if data.get('chara_info') and data['chara_info'].get('scenario_id'):
                 self.current_scenario_id = data['chara_info']['scenario_id']
-            item_list = data.get('user_item') or data.get('user_item_array')
+            item_list = (data.get('user_item') or data.get('user_item_array')
+                         or data.get('item_list') or data.get('user_item_list')
+                         or data.get('item_array'))
             if isinstance(item_list, list):
                 for item in item_list:
                     iid = item.get('item_id')
-                    num = item.get('number')
+                    num = item.get('number') if item.get('number') is not None else item.get('num')
                     if iid is not None and num is not None:
                         self.item_map[int(iid)] = int(num)
         
@@ -786,9 +784,12 @@ class UmaClient:
 
     def use_tp_item(self, item_id, use_num=1):
         """Use an item outside of training to restore TP (Trainer Points).
-        Tries multiple endpoint/payload variants since the exact API is unconfirmed."""
+        Tries multiple endpoint/payload variants — exact API is discovered by logging."""
         current_num = self.item_map.get(int(item_id), 0)
         attempts = [
+            # Most likely: same recovery endpoint but with item params
+            ("user/recovery_trainer_point", {"item_id": item_id, "use_num": use_num,
+                                             "count": use_num, "current_num": current_num}),
             ("item/use",         {"item_id": item_id, "use_num": use_num, "current_num": current_num}),
             ("user/use_item",    {"item_id": item_id, "use_num": use_num, "current_num": current_num}),
             ("item/recovery_tp", {"item_id": item_id, "use_num": use_num}),
@@ -798,22 +799,25 @@ class UmaClient:
         last_err = None
         for endpoint, payload in attempts:
             try:
+                print(f"[use_tp_item] trying {endpoint} item_id={item_id} x{use_num}")
                 result = self.call(endpoint, payload)
                 data = result.get("data", {})
                 if data.get("tp_info"):
                     self.tp_info = data["tp_info"]
-                item_list = data.get("user_item") or data.get("user_item_array") or data.get("item_list")
+                item_list = (data.get("user_item") or data.get("user_item_array")
+                             or data.get("item_list") or data.get("user_item_list"))
                 if isinstance(item_list, list):
                     for item in item_list:
                         iid = item.get("item_id")
-                        num = item.get("number")
+                        num = item.get("number") if item.get("number") is not None else item.get("num")
                         if iid is not None and num is not None:
                             self.item_map[int(iid)] = int(num)
+                print(f"[use_tp_item] SUCCESS on {endpoint}, tp_now={self.tp_info.get('current_tp')}")
                 return result
             except Exception as e:
+                print(f"[use_tp_item] {endpoint} failed: {e}")
                 last_err = e
-                if "102" not in str(e):
-                    raise
+                continue  # try every endpoint regardless of error code
         raise last_err
 
     def recovery_tp(self, count=1):
@@ -904,47 +908,103 @@ class UmaClient:
                     raise
         raise Exception('save_deck: support_card_deck/change_party returned 102 for all payload variants')
 
+    def _build_start_chara(self, card_id, support_card_ids, friend_viewer_id, friend_card_id,
+                           parent_id_1, parent_id_2, scenario_id, deck_id=1,
+                           rental_viewer_id=0, rental_trained_chara_id=0,
+                           difficulty_id=0, difficulty=0, is_boost=0, boost_story_event_id=0):
+        """Build the start_chara dict used by both start_career and use_recovery_item.
+
+        When a rental/guest parent is present the real client always assigns:
+          succession_trained_chara_id_1 = 0   (rental occupies slot 1)
+          succession_trained_chara_id_2 = <veteran trained_chara_id>
+        When there is NO rental both slots are own trained_chara_ids as normal.
+        """
+        if rental_trained_chara_id:
+            # Rental parent: slot 1 is 0, veteran goes to slot 2.
+            # parent_id_1 is the veteran (or parent_id_2 if only one veteran given).
+            veteran_id = parent_id_1 or parent_id_2
+            succ_id_1 = 0
+            succ_id_2 = veteran_id
+        else:
+            succ_id_1 = parent_id_1
+            succ_id_2 = parent_id_2
+        return {
+            'card_id': card_id,
+            'support_card_ids': support_card_ids,
+            'friend_support_card_info': {
+                'viewer_id': friend_viewer_id,
+                'support_card_id': friend_card_id
+            },
+            'succession_trained_chara_id_1': succ_id_1,
+            'succession_trained_chara_id_2': succ_id_2,
+            'rental_succession_trained_chara': {
+                'viewer_id': rental_viewer_id,
+                'trained_chara_id': rental_trained_chara_id,
+                'is_circle_member': False,
+                'is_event_rental': False
+            },
+            'scenario_id': scenario_id,
+            'selected_difficulty_info': {
+                'difficulty_id': difficulty_id,
+                'difficulty': difficulty,
+                'is_boost': is_boost
+            },
+            'select_deck_id': deck_id,
+            'boost_story_event_id': boost_story_event_id,
+            'is_play_training_challenge': False
+        }
+
+    def use_recovery_item(self, start_chara, tp_info, current_money, use_tp,
+                          succession_rank_point, item_id=None, use_num=None):
+        """Use a recovery item (Vita 20/40/65) before starting a career.
+
+        The real client bundles start_chara inside item/use_recovery_item so the
+        server registers the career intent at the same time as the item use.
+        After this call, single_mode_free/start must be called WITHOUT start_chara.
+        """
+        payload = {
+            'start_chara': start_chara,
+            'tp_info': tp_info,
+            'current_money': current_money,
+            'use_tp': use_tp,
+            'current_succession_rank_point': succession_rank_point,
+        }
+        if item_id is not None:
+            payload['item_id'] = item_id
+            payload['use_num'] = use_num or 1
+        return self.call('item/use_recovery_item', payload)
+
     def start_career(self, card_id, support_card_ids, friend_viewer_id, friend_card_id,
                      parent_id_1, parent_id_2, scenario_id, deck_id=1, use_tp=30,
                      tp_info=None, current_money=0, succession_rank_point=0,
                      rental_viewer_id=0, rental_trained_chara_id=0,
                      difficulty_id=0, difficulty=0, is_boost=0,
-                     boost_story_event_id=0):
+                     boost_story_event_id=0, skip_start_chara=False):
+        """Call single_mode_free/start.
+
+        skip_start_chara=True: called after use_recovery_item already sent start_chara —
+        the server has the career intent registered, so we just send an empty trigger.
+        skip_start_chara=False (default): normal path, full start_chara included.
+        """
         if not tp_info:
             tp_info = {'current_tp': 100, 'max_tp': 100, 'max_recovery_time': 0}
+        if skip_start_chara:
+            # Server already has the career intent from use_recovery_item.
+            # Just send common fields (no start_chara).
+            return self.call('single_mode_free/start', {})
+        start_chara = self._build_start_chara(
+            card_id, support_card_ids, friend_viewer_id, friend_card_id,
+            parent_id_1, parent_id_2, scenario_id, deck_id,
+            rental_viewer_id, rental_trained_chara_id,
+            difficulty_id, difficulty, is_boost, boost_story_event_id
+        )
         start_payload = {
-            'start_chara': {
-                'card_id': card_id,
-                'support_card_ids': support_card_ids,
-                'friend_support_card_info': {
-                    'viewer_id': friend_viewer_id,
-                    'support_card_id': friend_card_id
-                },
-                'succession_trained_chara_id_1': parent_id_1,
-                'succession_trained_chara_id_2': parent_id_2,
-                'rental_succession_trained_chara': {
-                    'viewer_id': rental_viewer_id,
-                    'trained_chara_id': rental_trained_chara_id,
-                    'is_circle_member': False,
-                    'is_event_rental': False
-                },
-                'scenario_id': scenario_id,
-                'selected_difficulty_info': {
-                    'difficulty_id': difficulty_id,
-                    'difficulty': difficulty,
-                    'is_boost': is_boost
-                },
-                'select_deck_id': deck_id,
-                'boost_story_event_id': boost_story_event_id,
-                'is_play_training_challenge': False
-            },
+            'start_chara': start_chara,
             'tp_info': tp_info,
             'current_money': current_money,
             'use_tp': use_tp,
             'current_succession_rank_point': succession_rank_point
         }
-        # succession_trained_chara_id_1/2 → YOUR OWN trained charas (Veteran tab)
-        # rental_succession_trained_chara   → a borrowed chara from another player (Guest tab)
         return self.call('single_mode_free/start', start_payload)
 
     def exec_command(self, command_type, command_id, current_turn, current_vital, command_group_id=0, select_id=0):

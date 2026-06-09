@@ -409,6 +409,7 @@ const els = {
         const MODE_KEY = 'uma_active_mode';
         let _sessionStartTime = Date.now();
         let _diagMetricsTimer = 0;
+        let _diagRunnerWasRunning = false; // tracks previous runner state for finish-detection
 
         // ── Mode switching (SETUP ↔ DIAGNOSTICS) ──────────────────────────────
         function switchMode(mode) {
@@ -664,6 +665,14 @@ const els = {
                 if (data.account) { state.account = data.account; renderAccountStrip(data.account); }
                 renderDiagCareer(runner, account, data.selection);
                 renderDiagLog(runner);
+
+                // Detect career finish: if runner just stopped, reset circle cache so
+                // the next updateDiagMetrics call re-fetches fresh club fans from the server.
+                const isRunning = !!(runner && runner.running);
+                if (_diagRunnerWasRunning && !isRunning) {
+                    _circleStatsFetched = false;
+                }
+                _diagRunnerWasRunning = isRunning;
             } catch(e) {}
             updateDiagMetrics();
         }
@@ -1217,7 +1226,11 @@ const els = {
         }
         // ── Start validation ─────────────────────────────────────────────────────
         function getStartMissingReason() {
-            const activeCareer = state.account && state.account.career && state.account.career.active;
+            // career.active can get stuck as true if the run errors out before the
+            // backend clears it — treat it as inactive when the runner is not running.
+            const runnerRunning = !!(state.runner && state.runner.running);
+            const activeCareer = runnerRunning &&
+                state.account && state.account.career && state.account.career.active;
             if (!state.selectedPreset) return 'Select a preset';
             if (activeCareer) return '';
             if (!selection.deck) return 'Select a deck';
@@ -1372,7 +1385,7 @@ const els = {
         }
         function bindSparkTooltips() {
             document.querySelectorAll('body > .sparks-tooltip').forEach(tooltip => tooltip.remove());
-            document.querySelectorAll('#parent-grid .grid-card').forEach(card => {
+            document.querySelectorAll('#parent-grid .grid-card, #follow-parent-grid .grid-card').forEach(card => {
                 const tooltip = card.querySelector('.sparks-tooltip');
                 if (!tooltip) return;
                 card.classList.add('has-sparks');
@@ -2442,7 +2455,8 @@ const els = {
                 els.friendStatus.classList.add('error');
             } finally {
                 state.isFetchingFriends = false;
-                const stillActive = dashData.account && dashData.account.career && dashData.account.career.active;
+                const stillActive = !!(state.runner && state.runner.running) &&
+                    dashData.account && dashData.account.career && dashData.account.career.active;
                 els.friendRefreshBtn.disabled = !!stillActive;
             }
         }
@@ -3363,4 +3377,5 @@ const els = {
                 fetchAndRenderFanStats();
             });
         }
-        // ───────────────────────────────────────────�
+        // ─────────────────────────────────────────────────────────────────────
+
