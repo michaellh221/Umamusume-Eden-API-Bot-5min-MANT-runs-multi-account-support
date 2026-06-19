@@ -676,6 +676,20 @@
     "icon_id": 20013,
     "skill_category": 5
   },
+  "100361": {
+    "name": "trigger:BEAT",
+    "rarity": 5,
+    "group_id": 10036,
+    "grade_value": 340,
+    "need_skill_point": 0,
+    "disable_singlemode": 1,
+    "tags": [
+      401,
+      403
+    ],
+    "icon_id": 20013,
+    "skill_category": 5
+  },
   "100371": {
     "name": "Schwarzes Schwert",
     "rarity": 5,
@@ -1075,6 +1089,20 @@
     "icon_id": 20013,
     "skill_category": 5
   },
+  "110101": {
+    "name": "Joyful Voyage!",
+    "rarity": 5,
+    "group_id": 11010,
+    "grade_value": 340,
+    "need_skill_point": 0,
+    "disable_singlemode": 1,
+    "tags": [
+      401,
+      403
+    ],
+    "icon_id": 20013,
+    "skill_category": 5
+  },
   "110111": {
     "name": "Superior Heal",
     "rarity": 5,
@@ -1307,6 +1335,19 @@
     "name": "Bountiful Harvest",
     "rarity": 5,
     "group_id": 11056,
+    "grade_value": 340,
+    "need_skill_point": 0,
+    "disable_singlemode": 1,
+    "tags": [
+      401
+    ],
+    "icon_id": 20013,
+    "skill_category": 5
+  },
+  "110591": {
+    "name": "Wherever This Wonder Leads",
+    "rarity": 5,
+    "group_id": 11059,
     "grade_value": 340,
     "need_skill_point": 0,
     "disable_singlemode": 1,
@@ -5534,6 +5575,20 @@
     "icon_id": 20011,
     "skill_category": 4
   },
+  "201453": {
+    "name": "Moonlit Flash",
+    "rarity": 2,
+    "group_id": 20145,
+    "grade_value": 508,
+    "need_skill_point": 150,
+    "disable_singlemode": 1,
+    "tags": [
+      104,
+      401
+    ],
+    "icon_id": 20012,
+    "skill_category": 4
+  },
   "201461": {
     "name": "End Closer Corners ◎",
     "rarity": 1,
@@ -6627,6 +6682,33 @@
     "icon_id": 10051,
     "skill_category": 0
   },
+  "202172": {
+    "name": "Downhill Speedster",
+    "rarity": 1,
+    "group_id": 20217,
+    "grade_value": 217,
+    "need_skill_point": 170,
+    "disable_singlemode": 0,
+    "tags": [
+      401
+    ],
+    "icon_id": 20011,
+    "skill_category": 4
+  },
+  "202181": {
+    "name": "99 Problems",
+    "rarity": 1,
+    "group_id": 20218,
+    "grade_value": -174,
+    "need_skill_point": 0,
+    "disable_singlemode": 1,
+    "tags": [
+      404,
+      405
+    ],
+    "icon_id": 10044,
+    "skill_category": 0
+  },
   "210011": {
     "name": "Burning Spirit SPD",
     "rarity": 2,
@@ -7419,6 +7501,20 @@
     "icon_id": 20011,
     "skill_category": 5
   },
+  "900361": {
+    "name": "trigger:BEAT",
+    "rarity": 1,
+    "group_id": 90036,
+    "grade_value": 180,
+    "need_skill_point": 200,
+    "disable_singlemode": 1,
+    "tags": [
+      401,
+      403
+    ],
+    "icon_id": 20011,
+    "skill_category": 5
+  },
   "900371": {
     "name": "Schwarzes Schwert",
     "rarity": 1,
@@ -7818,6 +7914,20 @@
     "icon_id": 20011,
     "skill_category": 5
   },
+  "910101": {
+    "name": "Joyful Voyage!",
+    "rarity": 1,
+    "group_id": 91010,
+    "grade_value": 180,
+    "need_skill_point": 200,
+    "disable_singlemode": 1,
+    "tags": [
+      401,
+      403
+    ],
+    "icon_id": 20011,
+    "skill_category": 5
+  },
   "910111": {
     "name": "Superior Heal",
     "rarity": 1,
@@ -8050,6 +8160,19 @@
     "name": "Bountiful Harvest",
     "rarity": 1,
     "group_id": 91056,
+    "grade_value": 180,
+    "need_skill_point": 200,
+    "disable_singlemode": 1,
+    "tags": [
+      401
+    ],
+    "icon_id": 20011,
+    "skill_category": 5
+  },
+  "910591": {
+    "name": "Wherever This Wonder Leads",
+    "rarity": 1,
+    "group_id": 91059,
     "grade_value": 180,
     "need_skill_point": 200,
     "disable_singlemode": 1,

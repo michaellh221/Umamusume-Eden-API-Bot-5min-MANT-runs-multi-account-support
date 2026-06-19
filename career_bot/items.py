@@ -107,12 +107,11 @@ SHOP_ITEM_COSTS = {
     "Glow Sticks": 15,
 }
 
-# Items usable via item/recovery_tp before a career starts.
-# Maps item_id → TP restored per single use.
+# TP recovery items usable before starting a career (item/use_recovery_item endpoint).
+# These are account-level items, not in-training items.
+# item_id → TP restored per use.  Extend this list as new items are discovered.
 TP_RESTORE_ITEMS = {
-    2001: 20,   # Vita 20
-    2002: 40,   # Vita 40
-    2003: 65,   # Vita 65
+    32: 30,   # Standard TP Recovery Potion (+30 TP)
 }
 
 AILMENT_CURE_MAP = {
@@ -240,7 +239,7 @@ DEFAULT_ITEM_TIERS = {
     "reset_whistle": 1,
     "coaching_megaphone": 999,
     "motivating_megaphone": 3,
-    "empowering_megaphone": 3,
+    "empowering_megaphone": 2,
     "speed_ankle_weights": 7,
     "stamina_ankle_weights": 7,
     "power_ankle_weights": 7,
@@ -504,14 +503,17 @@ class MantItemManager:
             slug = display_to_slug(name)
             base_t = int(tiers.get(slug) or 999)
             eff_t = base_t
+            # Miracle Cure: always tier-1 priority when not owned.
+            if slug == "miracle_cure" and owned.get(name, 0) <= 0:
+                eff_t = 1
+            # Rich Hand Cream: tier-1 when not owned and no Miracle Cure (proactive stock).
+            if slug == "rich_hand_cream" and owned.get(name, 0) <= 0 and not has_miracle:
+                eff_t = 1
+            # Other specific cures: tier 1 only when their ailment is active and no Miracle Cure.
             for ailment in active_ailments:
                 specific_cure = AILMENT_CURE_MAP.get(ailment)
-                if specific_cure and name == specific_cure and not has_miracle and owned.get(name, 0) <= 0:
+                if specific_cure and name == specific_cure and specific_cure != "Rich Hand Cream" and not has_miracle and owned.get(name, 0) <= 0:
                     eff_t = 1
-            if slug == "miracle_cure" and active_ailments and not has_miracle:
-                eff_t = 1
-            if (slug == "miracle_cure" or slug == "rich_hand_cream") and owned.get(name, 0) <= 0:
-                eff_t = 1
             if slug == "grilled_carrots":
                 eff_t = min(eff_t, base_t - bbq_shift)
             elif slug == "good-luck_charm":
@@ -800,7 +802,9 @@ class MantItemManager:
 
         whistle = self._whistle_target(best_command, owned, preset, status, current_turn)
         if whistle:
-            targets = [whistle]
+            # Keep instant-stat/energy/cure items already in targets; just skip
+            # charm/mega/anklet which conflict strategically with a whistle reset.
+            targets.append(whistle)
         else:
             charm = self._charm_target(best_command, owned, preset, status)
             if charm:
@@ -1122,6 +1126,13 @@ class MantItemManager:
         item_effects = free_data.get("item_effect_array") or []
         current_mega_tier = self._active_megaphone_tier(state)
 
+        # Force an Empowering Megaphone at the first turn of each summer camp
+        # (turn 36 = early July, turn 60 = early August) so both camp turns
+        # are fully boosted regardless of the score threshold.
+        SUMMER_BOOST_TURNS = (36, 60)
+        if turn in SUMMER_BOOST_TURNS and owned.get("Empowering Megaphone", 0) > 0 and current_mega_tier < 3:
+            return ("Empowering Megaphone", 1)
+
         score = self._command_stat_gain(best_command, sp_weight=0.5)
         cfg = self._mant_cfg(preset)
         small_threshold = float(cfg.get("mega_small_threshold") or 11)
@@ -1267,7 +1278,12 @@ class MantItemManager:
                 return None
 
         score = self._command_stat_gain(best_command, sp_weight=0.5)
-        threshold = 30 * (1 - (0.2 * self._active_megaphone_tier(state)))
+        # Base threshold drops to 0 by turn 72 so leftover anklets get burned
+        # before the run ends rather than wasted.
+        chara = (state.get("data") or {}).get("chara_info") or {}
+        current_turn = int(chara.get("turn") or 0)
+        late_factor = max(0.0, 1.0 - max(0, current_turn - 36) / 36.0)
+        threshold = 30 * late_factor * (1 - (0.2 * self._active_megaphone_tier(state)))
         if score > threshold:
             return (anklet, 1)
         return None
@@ -1309,16 +1325,56 @@ class MantItemManager:
         return result
 
     def _skip_buy(self, name, owned, preset=None, turn=0, budget=0, data=None, race_planner=None):
-        if name in MEGAPHONE_TIERS and self._megaphone_buy_surplus(data or {}, owned, turn, race_planner, preset):
-            return True
-        if name in CURE_ITEMS:
-            if owned.get(name, 0) > 0 or (name != AILMENT_CURE_ALL and owned.get(AILMENT_CURE_ALL, 0) > 0):
+        if name in MEGAPHONE_TIERS:
+            if name == "Empowering Megaphone":
+                return False  # always buy every Empowering Megaphone available
+            if name == "Motivating Megaphone":
+                # Buy a Motivating only when we have exactly 1 Empowering (as a tier-2 backup)
+                return int(owned.get("Empowering Megaphone", 0)) != 1
+            # Coaching Megaphone: keep the surplus cap
+            if self._megaphone_buy_surplus(data or {}, owned, turn, race_planner, preset):
                 return True
+        if name in CURE_ITEMS:
+            if name == AILMENT_CURE_ALL:
+                # Buy one Miracle Cure; stop once we own one.
+                return owned.get(name, 0) > 0
+            if name == "Rich Hand Cream":
+                # Keep one Rich Hand Cream in stock whenever there's no Miracle Cure.
+                return owned.get(name, 0) > 0 or owned.get(AILMENT_CURE_ALL, 0) > 0
+            # Other specific cures (Fluffy Pillow, Pocket Planner, etc.): only buy
+            # when their ailment is currently active AND we have no Miracle Cure.
+            _reverse_cure = {v: k for k, v in AILMENT_CURE_MAP.items()}
+            ailment_for_item = _reverse_cure.get(name)
+            if ailment_for_item:
+                if owned.get(AILMENT_CURE_ALL, 0) > 0:
+                    return True  # Miracle Cure in bag — use that instead
+                if owned.get(name, 0) > 0:
+                    return True  # already own one
+                active = self._active_bad_statuses(data or {})
+                return ailment_for_item not in active  # buy only if ailment is active
+            return True  # unknown cure item — skip
         type_idx = TRAINING_ITEM_DECK_TYPE_INDEX.get(name)
         if type_idx is not None:
+            # Stamina Ankle Weights: only buy if the preset's ideal stamina target > 1000.
+            if type_idx == 1:
+                ideal = (preset or {}).get("stat_ideal_targets") or []
+                if len(ideal) <= 1 or int(ideal[1] or 0) <= 1000:
+                    return True
+            # Buy anklets whose training type ranks in the top 3 of the preset's
+            # stat_priority list (0 = highest priority).  This ensures power and
+            # guts anklets are purchased when those stats are prioritised, while
+            # wit anklets (rank 4) and deprioritised stats are skipped.
+            stat_priority = (preset or {}).get("stat_priority") or [0, 1, 2, 3, 4]
+            try:
+                rank = stat_priority.index(type_idx)
+                if rank >= 3:
+                    return True
+            except ValueError:
+                return True
+            # Require at least 1 support card of this training type in the deck.
             counts = (preset or {}).get("_deck_type_counts") or []
             count = int(counts[type_idx] or 0) if len(counts) > type_idx else 0
-            if count < 2:
+            if count < 1:
                 return True
             return False
         if name in ONE_TIME_BUFF_ITEMS and name in self.used_buffs:

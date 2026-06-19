@@ -32,15 +32,17 @@ from pathlib import Path
 EXCLUDED_KEYS = {
     "facility_period_configs",
     "facility_ratios",
+    "learn_skill_list",
+    "learn_skill_blacklist",
+    "mandatory_skill_list",
+    "learn_skill_threshold",
+    "learn_skill_only_user_provided",
 }
 
 # Legacy field-name aliases from older versions of the preset format.
 # serialize_preset() rewrites these keys so saved files stay forward-compatible.
 RENAMES = {
     "race_list": "extra_race_list",
-    "skill_priority_list": "learn_skill_list",
-    "skill_blacklist": "learn_skill_blacklist",
-    "blacklistedSkills": "learn_skill_blacklist",
     "extraWeight": "extra_weight",
     "scoreValue": "score_value",
     "baseScore": "base_score",
@@ -65,20 +67,6 @@ def split_csv(value):
         return value
     return [part.strip() for part in str(value or "").split(",") if part.strip()]
 
-
-def normalize_skill_list(value):
-    rows = value if isinstance(value, list) else []
-    result = []
-    for row in rows:
-        if isinstance(row, list):
-            parts = []
-            for item in row:
-                parts.extend(split_csv(item))
-        else:
-            parts = split_csv(row)
-        if parts:
-            result.append(parts)
-    return result
 
 
 def as_int(value, default):
@@ -105,24 +93,24 @@ def serialize_preset(raw):
 
     serialized["name"] = slugify(data.get("name") or "preset")
     serialized["running_style"] = as_int(data.get("running_style"), 1)
-    serialized["learn_skill_list"] = normalize_skill_list(data.get("learn_skill_list"))
 
-    blacklist = []
-    blacklist.extend(split_csv(data.get("blacklistedSkills")))
-    blacklist.extend(split_csv(data.get("skill_blacklist")))
-    blacklist.extend(split_csv(data.get("learn_skill_blacklist")))
-    serialized["learn_skill_blacklist"] = list(dict.fromkeys(blacklist))
 
     serialized["extra_race_list"] = normalize_race_list(data.get("extra_race_list", data.get("race_list", [])))
-    serialized["learn_skill_threshold"] = as_int(data.get("learn_skill_threshold"), 888)
     serialized["target_distance"] = as_int(data.get("target_distance"), 0)
-    serialized["auto_buy_override_threshold"] = bool(data.get("auto_buy_override_threshold", True))
 
-    raw_mandatory = data.get("mandatory_skill_list")
-    if isinstance(raw_mandatory, list):
-        serialized["mandatory_skill_list"] = [str(s) for s in raw_mandatory if s]
-    else:
-        serialized["mandatory_skill_list"] = []
+    # Race solver settings
+    solver_mode = str(data.get("race_solver_mode") or "manual").strip().lower()
+    serialized["race_solver_mode"] = solver_mode if solver_mode in ("off", "auto", "manual") else "manual"
+    serialized["solver_max_races_in_row"] = max(1, min(5, as_int(data.get("solver_max_races_in_row"), 2)))
+    serialized["solver_include_op"] = bool(data.get("solver_include_op") or False)
+    serialized["solver_allow_summer"] = bool(data.get("solver_allow_summer") or False)
+    serialized["solver_apt_floor"] = max(1, min(8, as_int(data.get("solver_apt_floor"), 6)))
+    # manual_locks: {turn_str: program_id | "train"}
+    raw_locks = data.get("solver_manual_locks") or {}
+    serialized["solver_manual_locks"] = {str(k): v for k, v in raw_locks.items()} if isinstance(raw_locks, dict) else {}
+
+    mode = str(data.get("skill_optimizer_mode") or "team_trials").strip()
+    serialized["skill_optimizer_mode"] = mode if mode in ("score", "team_trials") else "team_trials"
 
     raw_priority = data.get("stat_priority")
     if isinstance(raw_priority, list) and len(raw_priority) == 5:
@@ -155,7 +143,6 @@ def hydrate_preset(raw):
     stat_priority, stat_ideal_targets, and stat_min_targets come from the
     user's preset and are passed through from serialize_preset().
     """
-def hydrate_preset(raw):
     data = serialize_preset(raw)
 
     data["scenario_id"] = MANT_SCENARIO_ID
@@ -180,7 +167,6 @@ def hydrate_preset(raw):
     data["pal_friendship_score"] = [0.08, 0.057, 0.018]
     data["pal_card_multiplier"] = 0.1
     data["rest_threshold"] = 48
-    data["manual_purchase_at_end"] = False
     data["mant_config"] = {}
 
     return data
@@ -206,28 +192,35 @@ class PresetStore:
             loaded[data["name"]] = data
         return sorted(loaded.values(), key=lambda item: item["name"].lower())
 
-    def read_one(self, name):
-        wanted = str(name or "").strip().lower()
-        for preset in self.read_all():
-            if preset["name"].lower() == wanted:
-                return preset
+    def _source_files(self):
+        return sorted(self.preset_dir.glob("*.json"))
+
+    def load(self, name):
+        """Load and hydrate a single preset by name. Returns None if not found."""
+        for path in self._source_files():
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+                if slugify(data.get("name") or path.stem) == slugify(name):
+                    return hydrate_preset(data)
+            except Exception:
+                continue
         return None
 
-    def write(self, preset):
+    def save(self, preset):
         self.ensure()
-        serialized_data = serialize_preset(preset)
-        path = self.preset_dir / f"{slugify(serialized_data['name'])}.json"
-        path.write_text(json.dumps(serialized_data, ensure_ascii=False, indent=2), encoding="utf-8")
-        return hydrate_preset(serialized_data)
+        serialized = serialize_preset(preset)
+        name = serialized["name"]
+        path = self.preset_dir / f"{name}.json"
+        path.write_text(json.dumps(serialized, ensure_ascii=False, indent=2), encoding="utf-8")
+        return serialized
 
     def delete(self, name):
-        path = self.preset_dir / f"{slugify(name)}.json"
-        if path.exists():
-            path.unlink()
-            return True
+        for path in self._source_files():
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+                if slugify(data.get("name") or path.stem) == slugify(name):
+                    path.unlink()
+                    return True
+            except Exception:
+                continue
         return False
-
-    def _source_files(self):
-        if self.preset_dir.exists():
-            return list(self.preset_dir.glob("*.json"))
-        return []

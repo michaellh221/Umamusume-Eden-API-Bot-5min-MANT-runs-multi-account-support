@@ -53,7 +53,7 @@ try:
 except Exception:
     pass
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
@@ -266,25 +266,43 @@ def _auth_cache_file():
         AUTH_CACHE_PATH = base_dir / "uma_runtime" / "auth_cache.json"
     return AUTH_CACHE_PATH
 
+AUTH_CACHE_MAX_AGE_HOURS = 20  # Steam session tickets expire; treat cache older than this as stale
+
 def _save_auth_cache(cfg):
     """Persist Frida-captured auth config to disk so subsequent logins skip Steam API."""
     try:
         path = _auth_cache_file()
         path.parent.mkdir(parents=True, exist_ok=True)
-        # Save everything except the password seed (re-supplied by user at login)
         saveable = {k: v for k, v in cfg.items() if k != 'steam_password_seed'}
+        saveable['_cached_at'] = time.time()
         with open(path, 'w') as f:
             json.dump(saveable, f, indent=2)
     except Exception as e:
         print(f"[auth_cache] save error: {e}")
 
+def _clear_auth_cache():
+    """Delete the auth cache so next startup triggers a fresh capture."""
+    try:
+        path = _auth_cache_file()
+        if path.exists():
+            path.unlink()
+            print("[auth_cache] cleared stale cache")
+    except Exception as e:
+        print(f"[auth_cache] clear error: {e}")
+
 def _load_auth_cache():
-    """Load cached auth config. Returns dict or {} if missing/invalid."""
+    """Load cached auth config. Returns {} if missing, invalid, or older than AUTH_CACHE_MAX_AGE_HOURS."""
     try:
         path = _auth_cache_file()
         if path.exists():
             with open(path) as f:
-                return json.load(f)
+                data = json.load(f)
+            cached_at = data.get('_cached_at', 0)
+            age_hours = (time.time() - cached_at) / 3600
+            if age_hours > AUTH_CACHE_MAX_AGE_HOURS:
+                print(f"[auth_cache] expired ({age_hours:.1f}h old > {AUTH_CACHE_MAX_AGE_HOURS}h limit) — will recapture")
+                return {}
+            return data
     except Exception:
         pass
     return {}
@@ -309,23 +327,60 @@ def _load_fan_stats():
     path = _fan_stats_file()
     try:
         if path.exists():
-            with open(path, "r", encoding="utf-8") as f:
-                _fan_stats = json.load(f)
+            text = path.read_text(encoding="utf-8")
+            try:
+                _fan_stats = json.loads(text)
+            except json.JSONDecodeError:
+                # Corrupted file (e.g. Windows mount garbage appended) — try to recover
+                # by finding the last valid closing brace of the top-level object.
+                for i in range(len(text) - 1, -1, -1):
+                    if text[i] == "}":
+                        try:
+                            _fan_stats = json.loads(text[:i + 1])
+                            print(f"fan_stats: recovered from corrupted JSON (truncated at char {i+1})")
+                            _save_fan_stats()   # re-write clean copy immediately
+                            break
+                        except json.JSONDecodeError:
+                            continue
+                else:
+                    print("fan_stats load error: file unrecoverable, starting fresh")
     except Exception as e:
         print(f"fan_stats load error: {e}")
+    # Back-compat: seed persistent totals from existing careers list if fields are missing
+    careers = _fan_stats.get("careers", [])
+    if "all_time_gained" not in _fan_stats:
+        _fan_stats["all_time_gained"] = sum(c.get("fans_gained", 0) for c in careers)
+    if "all_time_careers" not in _fan_stats:
+        _fan_stats["all_time_careers"] = sum(1 for c in careers if c.get("finished", True))
 
 def _save_fan_stats():
     path = _fan_stats_file()
     try:
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(_fan_stats, f, ensure_ascii=False, indent=2)
+        text = json.dumps(_fan_stats, ensure_ascii=False, indent=2)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(text, encoding="utf-8")
+        tmp.replace(path)          # atomic on same filesystem
     except Exception as e:
         print(f"fan_stats save error: {e}")
 
-def record_career_fans(card_id, fans_gained, final_fans, preset_name="", final_turn=0):
+def _career_grade(stats: dict) -> str:
+    """Compute letter grade from final training stats (speed+stamina+power+guts+wit)."""
+    total = sum(int(stats.get(k) or 0) for k in ("speed", "stamina", "power", "guts", "wit"))
+    if   total >= 4000: return "S+"
+    elif total >= 3500: return "S"
+    elif total >= 3000: return "A"
+    elif total >= 2500: return "B"
+    elif total >= 2000: return "C"
+    elif total >= 1500: return "D"
+    elif total >= 1000: return "E"
+    elif total >= 500:  return "F"
+    else:               return "G"
+
+def record_career_fans(card_id, fans_gained, final_fans, preset_name="", final_turn=0, running_style=0, final_stats=None):
     global _fan_stats, _session_fans_gained, _circle_refresh_needed
     _circle_refresh_needed = True  # refresh club fans on next /api/stats/circle call
     chara_name = chara_map.get(str(card_id), f"Uma ({card_id})")
+    stats = final_stats or {}
     entry = {
         "timestamp": _dt_mod.now().isoformat(timespec="seconds"),
         "date": _date_mod.today().isoformat(),
@@ -334,17 +389,24 @@ def record_career_fans(card_id, fans_gained, final_fans, preset_name="", final_t
         "fans_gained": int(fans_gained),
         "final_fans": int(final_fans),
         "preset": preset_name,
+        "running_style": int(running_style or 0),
         "final_turn": int(final_turn),
+        "finished": True,  # only recorded when runner reaches "done" — tracks completion state
+        "final_stats": stats,
+        "grade": _career_grade(stats),
     }
     with _fan_stats_lock:
         _fan_stats.setdefault("careers", []).append(entry)
         if len(_fan_stats["careers"]) > 500:
             _fan_stats["careers"] = _fan_stats["careers"][-500:]
+        _fan_stats["all_time_gained"] = _fan_stats.get("all_time_gained", 0) + int(fans_gained)
+        _fan_stats["all_time_careers"] = _fan_stats.get("all_time_careers", 0) + 1
         _session_fans_gained += int(fans_gained)
         _save_fan_stats()
 # ---------------------------------------------------------------------------
 
 base_dir = Path(__file__).parent.absolute()
+bot_logs_dir = base_dir / "uma_runtime" / "bot_logs"
 master_data_startup_status = master_data.status(base_dir)
 if master_data_startup_status.get("exists"):
     master_data_startup_result = master_data.generate(base_dir)
@@ -436,6 +498,31 @@ def get_turn_delay():
         "restore_max": getattr(delay_module, "TURN_DELAY_RESTORE_MAX", 5.0),
         "disabled": getattr(delay_module, "GLOBAL_DELAYS_DISABLED", False)
     }
+
+# ---------------------------------------------------------------------------
+# TP recovery mode – persisted in settings.json
+#   potion_first  – use TP items first, fall back to Jewels if still short
+#   potion_only   – TP items only; refuse to start if still short
+#   jewels_only   – spend Jewels only (original behaviour)
+# ---------------------------------------------------------------------------
+TP_RECOVERY_MODES = ("potion_first", "potion_only", "jewels_only")
+
+def load_tp_recovery_mode():
+    mode = _load_settings_json().get("tp_recovery", "jewels_only")
+    return mode if mode in TP_RECOVERY_MODES else "jewels_only"
+
+def set_tp_recovery_mode(mode):
+    if mode not in TP_RECOVERY_MODES:
+        mode = "jewels_only"
+    _save_settings_json({"tp_recovery": mode})
+    return mode
+
+def tp_recovery_label(mode):
+    return {
+        "potion_first": "TP items first, Jewels fallback",
+        "potion_only":  "TP items only",
+        "jewels_only":  "Jewels only",
+    }.get(mode, "Jewels only")
 
 # Restore turn delay from settings.json at startup (so fate tempo survives restarts)
 def _restore_turn_delay():
@@ -771,6 +858,11 @@ def get_account_status(data, career_data=None):
         },
         "gold": gold,
         "clocks": active_client.item_map.get(95, 0) if active_client else 0,
+        "potions": active_client.tp_potion_count() if active_client else 0,
+        "tp_recovery": {
+            "mode": load_tp_recovery_mode(),
+            "label": tp_recovery_label(load_tp_recovery_mode()),
+        },
         "career": None
     }
     if career:
@@ -906,10 +998,6 @@ class SavePresetRequest(BaseModel):
 class DeletePresetByNameRequest(BaseModel):
     name: str
 
-class SaveDeckRequest(BaseModel):
-    deck_id: int = 1
-    card_ids: list
-
 class CareerActionRequest(BaseModel):
     command_type: int
     command_id: int
@@ -961,11 +1049,11 @@ async def generate_master_data():
 
 @app.post("/api/presets/save_races")
 async def save_races(req: SaveRacesRequest):
-    preset = preset_store.read_one(req.preset_name)
+    preset = preset_store.load(req.preset_name)
     if not preset:
         return {"success": False, "detail": f"{req.preset_name} preset missing"}
     preset["extra_race_list"] = req.races
-    preset_store.write(preset)
+    preset_store.save(preset)
     return {"success": True}
 
 @app.get("/api/presets")
@@ -974,39 +1062,11 @@ async def get_presets():
 
 @app.post("/api/presets")
 async def save_preset(req: SavePresetRequest):
-    return {"success": True, "preset": preset_store.write(req.preset)}
+    return {"success": True, "preset": preset_store.save(req.preset)}
 
 @app.post("/api/presets/delete")
 async def delete_preset(req: DeletePresetByNameRequest):
     return {"success": preset_store.delete(req.name)}
-
-@app.post("/api/deck/save")
-async def save_deck(req: SaveDeckRequest):
-    if not active_client:
-        return {"success": False, "detail": "Not logged in"}
-    if not req.card_ids or len(req.card_ids) != 5:
-        return {"success": False, "detail": "Exactly 5 cards required"}
-    try:
-        result = active_client.save_deck(req.deck_id, req.card_ids)
-        # Refresh the deck list in active_dashboard_data so UI stays in sync
-        updated_decks = result.get('data', {}).get('support_card_deck_array')
-        if updated_decks and active_dashboard_data:
-            deck_array = updated_decks
-            decks = []
-            for deck in deck_array:
-                cards = []
-                for cid in deck.get('support_card_id_array', []):
-                    sid = str(cid)
-                    info = support_map.get(sid)
-                    if info:
-                        cards.append({'id': sid, 'name': info['name'], 'rarity': info['rarity'], 'type': display_support_type(info['type'])})
-                    else:
-                        cards.append({'id': sid, 'name': f'Unknown ({sid})', 'rarity': '?', 'type': '?'})
-                decks.append({'id': deck.get('deck_id'), 'name': deck.get('name', f'Deck {deck.get("deck_id")}'), 'cards': cards})
-            active_dashboard_data['decks'] = decks
-        return {"success": True}
-    except Exception as e:
-        return {"success": False, "detail": str(e)}
 
 @app.get("/api/skills")
 async def get_skills():
@@ -1041,8 +1101,10 @@ def start_career_from_request(req):
         active_account = get_account_status(data)
         if active_dashboard_data:
             active_dashboard_data["account"] = active_account
-    except Exception:
-        pass
+    except Exception as _ri_err:
+        if "394" in str(_ri_err):
+            return {"success": False, "detail": "Session expired (394) — please log in again", "session_expired": True}
+        # Non-fatal: proceed with cached state
 
     # Re-check career state with fresh server data (catches stale local state)
     if active_account and active_account.get("career") and active_account["career"].get("active"):
@@ -1058,16 +1120,107 @@ def start_career_from_request(req):
     current_money = active_start_state['current_money']
     succession_rank_point = selected_succession_rank_point(req)
 
+    # ── TP recovery (BEFORE pre_single_mode) ──────────────────────────────────
+    # item/use_recovery_item works pre-career only BEFORE pre_single_mode is called.
+    # Calling pre_single_mode first puts the session into a state where the
+    # endpoint returns 102.  Match v6.3's ordering: potions → pre_single_mode → start.
+    JEWEL_FLOOR = 1000
+    _tp_mode = load_tp_recovery_mode()
+    if req.use_tp and current_tp < req.use_tp:
+        if _tp_mode in ("potion_first", "potion_only"):
+            attempt = 0
+            while current_tp < req.use_tp and attempt < 10:
+                print(f"[tp] TP short ({current_tp}/{req.use_tp}), mode={_tp_mode} — trying potion (attempt {attempt+1})")
+                try:
+                    active_client.use_recovery_item(item_num=1)
+                    tp_info = active_client.tp_info
+                    active_start_state['tp_info'] = tp_info
+                    new_tp = int((tp_info or {}).get('current_tp') or 0)
+                    print(f"[tp] potion attempt {attempt+1}: {current_tp} -> {new_tp} TP")
+                    if new_tp <= current_tp:
+                        # TP didn't increase — no more potions available
+                        print(f"[tp] TP unchanged after potion — no potions left")
+                        break
+                    current_tp = new_tp
+                except Exception as e:
+                    print(f"[tp] potion use failed: {e}")
+                    if "394" in str(e):
+                        return {"success": False, "detail": "Session expired (394) during TP recovery — please log in again", "session_expired": True}
+                    break
+                attempt += 1
+        if _tp_mode == "potion_only" and current_tp < req.use_tp:
+            return {"success": False, "detail": f"TP short ({current_tp}/{req.use_tp}) — items-only mode, not spending Jewels"}
+
+    if req.use_tp and current_tp < req.use_tp:
+        if _tp_mode == "potion_only":
+            return {"success": False, "detail": f"TP short — items-only mode, not spending Jewels"}
+        total_jewels = (active_client.coin_info.get("fcoin", 0)
+                        + active_client.coin_info.get("coin", 0))
+        if total_jewels < JEWEL_FLOOR:
+            print(f"[tp] Jewels too low ({total_jewels} < {JEWEL_FLOOR}) — stopping loop to protect balance")
+            return {"success": False, "detail": f"TP short ({current_tp}/{req.use_tp}) and Jewels below safety floor ({total_jewels}/{JEWEL_FLOOR})"}
+        print(f"[tp] TP still short after items, spending Jewels ({total_jewels} available)")
+        for attempt in range(3):
+            try:
+                needed = ((req.use_tp - current_tp) + 29) // 30
+                active_client.recovery_tp(needed)
+                tp_info = active_client.tp_info
+                active_start_state['tp_info'] = tp_info
+                current_tp = int(tp_info.get('current_tp') or 0)
+                print(f"[tp] Jewel attempt {attempt+1}: TP now {current_tp}")
+                if current_tp >= req.use_tp:
+                    break
+            except Exception as e:
+                print(f"[tp] Jewel attempt {attempt+1} failed: {e}")
+                if "213" in str(e):
+                    try:
+                        res = active_client.call("load/index", {"adid": ""})
+                        active_client.refresh_cached_account_state(res.get("data", {}))
+                        tp_info = active_client.tp_info
+                        active_start_state['tp_info'] = tp_info
+                        current_tp = int(tp_info.get('current_tp') or 0)
+                    except Exception:
+                        pass
+                dna_sleep(1.0, 1.0)
+
+    if req.use_tp and current_tp < req.use_tp:
+        return {"success": False, "detail": f"Not enough TP: {current_tp}/{req.use_tp}"}
+    # ── end TP recovery ────────────────────────────────────────────────────────
+
     try:
-        active_client.pre_single_mode([req.friend_viewer_id] if req.friend_viewer_id else [])
+        pre_res = active_client.pre_single_mode([req.friend_viewer_id] if req.friend_viewer_id else [])
+        # pre_single_mode returns friends' succession characters in
+        # succession_trained_chara_data.  Merge these into active_parent_cards
+        # so friend-owned parents survive across loop iterations without being
+        # cleared by the validation step below.
+        try:
+            pre_data = pre_res.get("data") or {}
+            stcd = pre_data.get("succession_trained_chara_data") or {}
+            for chara in stcd.get("succession_trained_chara_array") or []:
+                tid = chara.get("trained_chara_id")
+                cid_raw = str(chara.get("card_id", ""))
+                if tid and cid_raw.isdigit():
+                    lineage = [int(cid_raw)] + [
+                        int(sc.get("card_id"))
+                        for sc in (chara.get("succession_chara_array") or [])
+                        if sc.get("card_id")
+                    ]
+                    active_parent_cards[int(tid)] = lineage
+                    active_parent_rank_points[int(tid)] = {
+                        "rank": chara.get("rank", 0),
+                        "rank_score": chara.get("rank_score", 0),
+                    }
+        except Exception as _pre_e:
+            print(f"[career] pre_single_mode parent merge failed: {_pre_e}")
         dna_sleep(0.5, 1.5)
     except Exception as e:
         print("PRE_SINGLE_MODE ERROR:", e)
 
     # Validate veteran parent IDs against known active_parent_cards.
-    # If any are missing (stale from a previous loop iteration), refresh from
-    # load/index and zero out IDs that still can't be found — a missing parent
-    # causes a 500 from single_mode_free/start.
+    # If any are missing after the pre_single_mode refresh above, try load/index
+    # (covers own characters).  Only zero out an ID if still not found after
+    # both refreshes — and never mutate req permanently; use local overrides
+    # instead so subsequent loop iterations keep the original IDs.
     veteran_ids = [pid for pid in (int(req.parent_id_1 or 0), int(req.parent_id_2 or 0)) if pid]
     if veteran_ids and any(pid not in active_parent_cards for pid in veteran_ids):
         try:
@@ -1083,11 +1236,17 @@ def start_career_from_request(req):
             print("[career] refreshed parent list from load/index")
         except Exception as _e:
             print(f"[career] parent refresh failed: {_e}")
-    for attr in ("parent_id_1", "parent_id_2"):
-        pid = int(getattr(req, attr) or 0)
-        if pid and pid not in active_parent_cards:
-            print(f"[career] parent {pid} not found after refresh — clearing")
-            setattr(req, attr, 0)
+    # Use local variables rather than mutating req — this preserves the original
+    # IDs for subsequent loop iterations even when a parent can't be found.
+    _parent_id_1 = int(req.parent_id_1 or 0)
+    _parent_id_2 = int(req.parent_id_2 or 0)
+    for _attr, _pid_ref in (("parent_id_1", _parent_id_1), ("parent_id_2", _parent_id_2)):
+        if _pid_ref and _pid_ref not in active_parent_cards:
+            print(f"[career] parent {_pid_ref} not found after refresh — skipping for this run")
+            if _attr == "parent_id_1":
+                _parent_id_1 = 0
+            else:
+                _parent_id_2 = 0
 
     # Resolve human-readable names for debug logging
     def _resolve_name(card_id_str):
@@ -1099,35 +1258,49 @@ def start_career_from_request(req):
     parent2_name = _resolve_name(parent2_cards[0]) if parent2_cards else f"Unknown (id={req.parent_id_2})"
     print(f"[career] start: {trainee_name} | p1={parent1_name} p2={parent2_name} rental={req.rental_trained_chara_id} deck={req.deck_id}")
 
-    if req.use_tp and current_tp < req.use_tp:
-        for attempt in range(3):
+    # ── Rebuild active_selection so portraits survive server restarts ──────────
+    try:
+        sel_cards = []
+        for sid in (req.support_card_ids or []):
+            s = str(sid)
+            info = support_map.get(s, {})
+            sel_cards.append({'id': s, 'name': info.get('name', f'Unknown ({s})'),
+                              'rarity': info.get('rarity', '?'),
+                              'type': display_support_type(info.get('type', 0))})
+        active_selection['deck'] = {'id': req.deck_id, 'name': f'Deck {req.deck_id}', 'cards': sel_cards}
+        if req.friend_card_id:
+            s = str(req.friend_card_id)
+            info = support_map.get(s, {})
+            active_selection['friend'] = {'support_card_id': s, 'support_name': info.get('name', f'Unknown ({s})')}
+        vets = []
+        for pid in [req.parent_id_1, req.parent_id_2]:
             try:
-                needed = ((req.use_tp - current_tp) + 29) // 30
-                active_client.recovery_tp(needed)
-                tp_info = active_client.tp_info
-                active_start_state['tp_info'] = tp_info
-                current_tp = int(tp_info.get('current_tp') or 0)
-                if current_tp >= req.use_tp:
-                    break
-            except Exception as e:
-                if "213" in str(e):
-                    try:
-                        res = active_client.call("load/index", {"adid": ""})
-                        active_client.refresh_cached_account_state(res.get("data", {}))
-                    except Exception:
-                        pass
-                dna_sleep(1.0, 1.0)
-
-    if req.use_tp and current_tp < req.use_tp:
-        return {"success": False, "detail": f"Not enough TP: {current_tp}/{req.use_tp}"}
+                if pid:
+                    lin = active_parent_cards.get(int(pid), [])
+                    if lin:
+                        cid = str(lin[0])
+                        vets.append({'card_id': cid, 'name': chara_map.get(cid, f'Unknown ({cid})')})
+            except (TypeError, ValueError):
+                pass
+        active_selection['veterans'] = vets
+        try:
+            if req.rental_trained_chara_id:
+                lin = active_parent_cards.get(int(req.rental_trained_chara_id), [])
+                if lin:
+                    cid = str(lin[0])
+                    active_selection['guestParent'] = {'card_id': cid, 'name': chara_map.get(cid, f'Unknown ({cid})')}
+        except (TypeError, ValueError):
+            pass
+    except Exception as _sel_e:
+        print(f"[career] selection rebuild skipped: {_sel_e}")
 
     result = active_client.start_career(
         card_id=req.card_id,
         support_card_ids=req.support_card_ids,
         friend_viewer_id=req.friend_viewer_id,
         friend_card_id=req.friend_card_id,
-        parent_id_1=req.parent_id_1,
-        parent_id_2=req.parent_id_2,
+        parent_id_1=_parent_id_1,
+        parent_id_2=_parent_id_2,
         rental_viewer_id=req.rental_viewer_id,
         rental_trained_chara_id=req.rental_trained_chara_id,
         scenario_id=req.scenario_id,
@@ -1145,11 +1318,32 @@ def start_career_from_request(req):
     return {"success": True, "result": result}
 
 def apply_career_result(result):
-    global active_account, active_dashboard_data
+    global active_account, active_dashboard_data, active_parent_cards, active_parent_rank_points
     result_data = result.get('data', {})
     update_start_state(result_data)
     account = get_account_status(result_data, result)
     chara_info = result_data.get('chara_info') or {}
+
+    # Refresh parent cache from start response succession data so newly created
+    # veterans are immediately available for the next loop iteration without
+    # requiring a manual /api/parents reload.
+    try:
+        stcd = result_data.get('succession_trained_chara_data') or {}
+        for chara in stcd.get('succession_trained_chara_array') or []:
+            tid = chara.get('trained_chara_id')
+            cid_raw = str(chara.get('card_id', ''))
+            if tid and cid_raw.isdigit():
+                lineage = [int(cid_raw)] + [
+                    int(sc.get('card_id')) for sc in (chara.get('succession_chara_array') or [])
+                    if sc.get('card_id')
+                ]
+                active_parent_cards[int(tid)] = lineage
+                active_parent_rank_points[int(tid)] = {
+                    'rank': chara.get('rank', 0),
+                    'rank_score': chara.get('rank_score', 0)
+                }
+    except Exception as _e:
+        print(f"[apply_career_result] parent cache refresh skipped: {_e}")
     if chara_info:
         account["career"] = account.get("career") or {}
         card_id = str(chara_info.get('card_id', account["career"].get("card_id", '')))
@@ -1215,7 +1409,9 @@ async def login(req: LoginRequest):
             print("[auth_cache] reusing cached Steam credentials — skipping Steam API call")
         cfg['steam_password_seed'] = req.password
         if not has_fresh_auth_config(cfg):
-            raise Exception('Fresh in-game auth capture required; switch to the target in-game account, restart capture, then login again')
+            import threading
+            threading.Thread(target=refresh_auth_before_serving, daemon=True).start()
+            return {"success": False, "detail": "Game launching for auth capture — log in to the target account, then click LOGIN again.", "needs_auth_capture": True}
 
         c = UmaClient(cfg, trace_enabled=False)
         gated_client = GateKeeper(c)
@@ -1250,26 +1446,6 @@ async def login(req: LoginRequest):
                 'name': chara_map.get(cid, f"Unknown ({cid})")
             })
             
-        supports = []
-        support_card_list = d.get('support_card_list', [])
-        for s in support_card_list:
-            sid = str(s.get('support_card_id', s.get('id', '')))
-            info = support_map.get(sid)
-            if info:
-                supports.append({
-                    'id': sid, 
-                    'name': info['name'], 
-                    'type': display_support_type(info['type']),
-                    'rarity': info['rarity']
-                })
-            else:
-                supports.append({
-                    'id': sid, 
-                    'name': f"Unknown ({sid})", 
-                    'type': 'Unknown', 
-                    'rarity': '?'
-                })
-                
         decks = []
         deck_array = d.get('support_card_deck_array', [])
         for deck in deck_array:
@@ -1398,7 +1574,6 @@ async def login(req: LoginRequest):
             "success": True,
             "account": account,
             "umas": umas,
-            "supports": supports,
             "decks": decks,
             "parents": parents
         }
@@ -1408,6 +1583,13 @@ async def login(req: LoginRequest):
         if "STEAM_GUARD_REQUIRED" in msg:
              pending_game_auth_config = cfg
              return {"success": False, "needs_2fa": True}
+        if "394" in msg:
+            # Cached credentials are rejected by the server — wipe the cache
+            # and immediately kick off a fresh Frida capture in the background.
+            _clear_auth_cache()
+            import threading
+            threading.Thread(target=refresh_auth_before_serving, daemon=True).start()
+            return {"success": False, "detail": "Session expired — game launching for fresh auth capture. Log in to the target account, then click LOGIN again.", "session_expired": True, "needs_auth_capture": True}
         return {"success": False, "detail": str(e)}
 
 @app.get("/api/session")
@@ -1601,6 +1783,8 @@ def manage_career_loop(req, preset, initial_result):
                         final_fans=_fans_end,
                         preset_name=preset.get("name", ""),
                         final_turn=int(status.get("turn") or 0),
+                        running_style=int(preset.get("running_style") or 0),
+                        final_stats=status.get("final_stats") or {},
                     )
             except Exception as _e:
                 print(f"fan_stats record error: {_e}")
@@ -1619,16 +1803,22 @@ def manage_career_loop(req, preset, initial_result):
         if not req.dev_mode:
             break
             
-        for _ in range(6):
+        # Wait between careers — gives the server time to clear the previous
+        # career slot before we attempt to open a new one (avoids 501 rejections).
+        for _ in range(30):
             if backend_loop_stop:
                 return
             dna_sleep(1.0, 1.0)
-            
+
         started_ok = False
         while not started_ok and not backend_loop_stop:
             try:
                 started = start_career_from_request(req)
                 if not started.get("success"):
+                    if started.get("session_expired"):
+                        print(f"[loop] session expired (394) — stopping loop, re-login required")
+                        backend_loop_stop = True
+                        return
                     consecutive_fails += 1
                     if consecutive_fails >= 5:
                         break
@@ -1643,6 +1833,14 @@ def manage_career_loop(req, preset, initial_result):
                 started_ok = True
                 consecutive_fails = 0
             except Exception as e:
+                err_str = str(e)
+                # 501 = server hard-refuses new career (slot locked, daily limit,
+                # rental expired, etc.).  No point retrying immediately — stop the
+                # loop and let the user investigate.
+                if "501" in err_str:
+                    print(f"[loop] 501 on career start — stopping loop: {e}")
+                    backend_loop_stop = True
+                    return
                 consecutive_fails += 1
                 if consecutive_fails >= 5:
                     break
@@ -1656,48 +1854,105 @@ def manage_career_loop(req, preset, initial_result):
 
 @app.post("/api/career/run")
 async def run_career(req: RunCareerRequest):
-    global active_account, backend_loop_thread
-    if career_runner.snapshot().get("running") or (backend_loop_thread and backend_loop_thread.is_alive()):
+    global active_account, backend_loop_thread, backend_loop_stop
+    runner_active = career_runner.snapshot().get("running")
+    loop_alive = backend_loop_thread and backend_loop_thread.is_alive()
+    if runner_active:
         return {"success": False, "detail": "Career runner loop already active"}
+    if loop_alive:
+        # Loop thread is alive but the runner is not processing a career turn —
+        # it's stuck in a retry-wait. Signal it to stop and let the user take over.
+        print("[career/run] stopping idle loop thread so manual start can proceed")
+        backend_loop_stop = True
+        backend_loop_thread.join(timeout=5)
+        backend_loop_stop = False
     preset_name = req.preset_name or "xguri parent"
-    preset = preset_store.read_one(preset_name)
+    preset = preset_store.load(preset_name)
     if not preset:
         return {"success": False, "detail": f"{preset_name} preset missing"}
     
     try:
-        account = active_account or {}
-        career = account.get("career") or {}
-        if career.get("active"):
+        # Always do a fresh server check — the in-memory career.active flag may
+        # have been cleared by the runner stopping, even if the career is still
+        # live on the server (e.g. user stopped bot mid-run to change preset).
+        load_data = {}
+        try:
             index_result = active_client.call('load/index')
             load_data = index_result.get('data', {})
             update_start_state(load_data)
-
             account = get_account_status(load_data)
             active_account = account
-            career = account.get("career") or {}
+        except Exception as _e:
+            print(f"[career/run] load/index failed: {_e}")
+            account = active_account or {}
+        career = account.get("career") or {}
 
+        # load/index doesn't always include single_mode_chara_light even when a career
+        # is mid-run (e.g. bot stopped between turns). Try load_career directly as a
+        # second check before falling through to start_career_from_request.
+        if not career.get("active"):
+            try:
+                probe = active_client.load_career()
+                if (probe.get('data') or {}).get('chara_info'):
+                    print("[career/run] load/index missed active career — detected via load_career probe")
+                    account = get_account_status(load_data, probe)
+                    active_account = account
+                    career = account.get("career") or {}
+            except Exception as _probe_e:
+                print(f"[career/run] load_career probe: {_probe_e}")
+
+        _need_fresh_start = not career.get("active")
         if career.get("active"):
-            career_result = active_client.load_career()
-            career_data = career_result.get('data', {})
-            
-            account = get_account_status(load_data, career_result)
-            active_account = account
-            
-            career_status = account.get("career")
-            req.card_id = int(career_status.get("card_id"))
-            req.support_card_ids = career_status.get("support_card_ids")
-            req.friend_viewer_id = int(career_status.get("friend_viewer_id"))
-            req.friend_card_id = int(career_status.get("friend_card_id"))
-            req.parent_id_1 = int(career_status.get("parent_id_1"))
-            req.parent_id_2 = int(career_status.get("parent_id_2"))
-            req.deck_id = int(career_status.get("deck_id"))
-            req.scenario_id = int(career_status.get("scenario_id") or preset.get("scenario_id", 4))
-            
-            chara_info = career_data.get('chara_info') or {}
-            if active_dashboard_data:
-                active_dashboard_data["account"] = account
-            result = career_result
-        else:
+            try:
+                career_result = active_client.load_career()
+                career_data = career_result.get('data', {})
+                account = get_account_status(load_data, career_result)
+                active_account = account
+                career_status = account.get("career")
+                req.card_id = int(career_status.get("card_id"))
+                req.support_card_ids = career_status.get("support_card_ids")
+                req.friend_viewer_id = int(career_status.get("friend_viewer_id"))
+                req.friend_card_id = int(career_status.get("friend_card_id"))
+                req.parent_id_1 = int(career_status.get("parent_id_1"))
+                req.parent_id_2 = int(career_status.get("parent_id_2"))
+                req.deck_id = int(career_status.get("deck_id"))
+                req.scenario_id = int(career_status.get("scenario_id") or preset.get("scenario_id", 4))
+                # Rebuild active_selection from the resumed career so portraits show in monitor tab
+                try:
+                    sel_cards = []
+                    for sid in (req.support_card_ids or []):
+                        s = str(sid)
+                        info = support_map.get(s, {})
+                        sel_cards.append({'id': s, 'name': info.get('name', f'Unknown ({s})'),
+                                          'rarity': info.get('rarity', '?'),
+                                          'type': display_support_type(info.get('type', 0))})
+                    active_selection['deck'] = {'id': req.deck_id, 'name': f'Deck {req.deck_id}', 'cards': sel_cards}
+                    fid = career_status.get("friend_card_id")
+                    if fid:
+                        s = str(fid)
+                        info = support_map.get(s, {})
+                        active_selection['friend'] = {'support_card_id': s, 'support_name': info.get('name', f'Unknown ({s})')}
+                    vets = []
+                    for pid in [career_status.get("parent_id_1"), career_status.get("parent_id_2")]:
+                        if pid:
+                            lin = active_parent_cards.get(int(pid), [])
+                            if lin:
+                                cid = str(lin[0])
+                                vets.append({'card_id': cid, 'name': chara_map.get(cid, f'Unknown ({cid})')})
+                    active_selection['veterans'] = vets
+                except Exception as _sel_e:
+                    print(f"[career/run] selection rebuild skipped: {_sel_e}")
+                chara_info = career_data.get('chara_info') or {}
+                if active_dashboard_data:
+                    active_dashboard_data["account"] = account
+                result = career_result
+            except Exception as _load_e:
+                if "394" in str(_load_e):
+                    print(f"[career/run] load_career 394 — career already gone on server, starting fresh")
+                    _need_fresh_start = True
+                else:
+                    raise
+        if _need_fresh_start:
             if not req.scenario_id:
                 req.scenario_id = int(preset.get("scenario_id", 4))
             started = start_career_from_request(req)
@@ -1708,13 +1963,13 @@ async def run_career(req: RunCareerRequest):
 
         apply_deck_type_counts(preset, req=req, chara_info=chara_info)
         
-        if req.dev_mode:
-            backend_loop_stop = False
-            backend_loop_thread = threading.Thread(target=manage_career_loop, args=(req, preset, result), daemon=True)
-            backend_loop_thread.start()
-            dna_sleep(0.5, 0.5)
-        else:
-            career_runner.start(active_client, preset, result, max(1, min(int(req.max_steps or 2500), 3000)), burn_clocks=req.burn_clocks, dev_mode=req.dev_mode)
+        # Always run through manage_career_loop so fan stats are recorded on
+        # completion regardless of mode.  manage_career_loop already breaks after
+        # the first career when dev_mode is False (non-LOOP mode).
+        backend_loop_stop = False
+        backend_loop_thread = threading.Thread(target=manage_career_loop, args=(req, preset, result), daemon=True)
+        backend_loop_thread.start()
+        dna_sleep(0.5, 0.5)
             
         return {"success": True, "account": account, "chara_info": chara_info, "runner": career_runner.snapshot()}
     except Exception as e:
@@ -1723,10 +1978,50 @@ async def run_career(req: RunCareerRequest):
 @app.get("/api/career/runner")
 async def career_runner_status():
     # Include fresh account + selection so diagnostics card always shows current run.
+    snap = career_runner.snapshot()
+    account = active_account
+    # If the runner is actively processing turns, guarantee career.active=True so
+    # the monitor tab never shows "No active career" during a live run.
+    if snap.get("running") and account:
+        career = account.get("career")
+        if career and not career.get("active"):
+            career["active"] = True
+
+    # If selection portraits are missing but a career is loaded, rebuild from
+    # career data so portraits appear without needing a server restart + resume.
+    if not active_selection.get("deck") and account:
+        career = account.get("career") or {}
+        sup_ids = career.get("support_card_ids") or []
+        if sup_ids:
+            try:
+                sel_cards = []
+                for sid in sup_ids:
+                    s = str(sid)
+                    info = support_map.get(s, {})
+                    sel_cards.append({'id': s, 'name': info.get('name', f'Unknown ({s})'),
+                                      'rarity': info.get('rarity', '?'),
+                                      'type': display_support_type(info.get('type', 0))})
+                active_selection['deck'] = {'id': career.get('deck_id', 0), 'name': 'Active Deck', 'cards': sel_cards}
+                fid = career.get('friend_card_id')
+                if fid:
+                    s = str(fid)
+                    info = support_map.get(s, {})
+                    active_selection['friend'] = {'support_card_id': s, 'support_name': info.get('name', f'Unknown ({s})')}
+                vets = []
+                for pid in [career.get('parent_id_1'), career.get('parent_id_2')]:
+                    if pid:
+                        lin = active_parent_cards.get(int(pid), [])
+                        if lin:
+                            cid = str(lin[0])
+                            vets.append({'card_id': cid, 'name': chara_map.get(cid, f'Unknown ({cid})')})
+                active_selection['veterans'] = vets
+            except Exception:
+                pass
+
     return {
         "success": True,
-        "runner": career_runner.snapshot(),
-        "account": active_account,
+        "runner": snap,
+        "account": account,
         "selection": active_selection,
     }
 
@@ -1848,6 +2143,31 @@ async def delete_career(req: DeleteCareerRequest):
     except Exception as e:
         return {"success": False, "detail": str(e)}
 
+@app.get("/api/settings/tp-recovery")
+async def get_tp_recovery_settings():
+    mode = load_tp_recovery_mode()
+    potions = None
+    if active_client is not None:
+        try:
+            potions = active_client.tp_potion_count()
+        except Exception:
+            potions = None
+    return {
+        "success": True,
+        "mode": mode,
+        "label": tp_recovery_label(mode),
+        "modes": list(TP_RECOVERY_MODES),
+        "potions": potions,
+    }
+
+class TpRecoveryRequest(BaseModel):
+    mode: str = "jewels_only"
+
+@app.post("/api/settings/tp-recovery")
+async def set_tp_recovery_settings(req: TpRecoveryRequest):
+    mode = set_tp_recovery_mode(req.mode)
+    return {"success": True, "mode": mode, "label": tp_recovery_label(mode)}
+
 @app.post("/api/career/give-up")
 async def give_up_career():
     """
@@ -1921,6 +2241,56 @@ async def get_item_status():
                 "tp_per_use": TP_RESTORE_ITEMS.get(item_id),
             })
     return {"items": items, "total_unique": len(items)}
+
+@app.get("/api/debug/events")
+async def debug_events():
+    """Fetch load/index and return any keys that look event/boost/difficulty related."""
+    if not active_client:
+        return {"error": "not logged in"}
+    try:
+        res = active_client.call('load/index', {})
+        data = res.get('data', {})
+    except Exception as e:
+        return {"error": str(e)}
+    keywords = ('event', 'boost', 'story', 'difficulty', 'challenge', 'playthrough', 'reward')
+    found = {}
+    for k, v in data.items():
+        if any(kw in k.lower() for kw in keywords):
+            found[k] = v
+    return {"matched_keys": found, "all_keys": list(data.keys())}
+
+@app.get("/api/showtime-info")
+async def showtime_info():
+    """Return the active Showtime event ID and difficulty_id from load/index.
+
+    story_event_id      → use as boost_story_event_id in the start request
+    difficulty_id       → use as selected_difficulty_info.difficulty_id
+    max_difficulty      → highest unlocked difficulty level (open_difficulty_index)
+    """
+    if not active_client:
+        return {"error": "not logged in"}
+    try:
+        res = active_client.call('load/index', {})
+        data = res.get('data', {})
+    except Exception as e:
+        return {"error": str(e)}
+
+    story_event_id = data.get('story_event_id', 0)
+
+    # single_mode_difficulty_info_array holds the Showtime scenario entry
+    diff_array = data.get('single_mode_difficulty_info_array', [])
+    difficulty_id = 0
+    max_difficulty = 5
+    if diff_array:
+        entry = diff_array[0]
+        difficulty_id = entry.get('difficulty_id', 0)
+        max_difficulty = entry.get('open_difficulty_index', 5)
+
+    return {
+        "story_event_id": story_event_id,
+        "difficulty_id": difficulty_id,
+        "max_difficulty": max_difficulty,
+    }
 
 # ── REST API: circle (club) stats ──────────────────────────────────────────
 @app.get("/api/stats/circle")
@@ -2005,6 +2375,7 @@ async def get_circle_stats(refresh: bool = False):
 @app.get("/api/stats/fans")
 async def get_fan_stats():
     """Fan farming stats: session totals, daily totals, per-career history, circle info."""
+    _load_fan_stats()   # reload from disk so edits/backfills are always reflected
     today = _date_mod.today().isoformat()
     with _fan_stats_lock:
         careers = list(_fan_stats.get("careers", []))
@@ -2022,15 +2393,24 @@ async def get_fan_stats():
 
     # current fans — prefer live runner snapshot (updates every turn) over stale account cache
     current_fans = None
+    live_gain = 0
     if active_account and active_account.get("career") and active_account["career"].get("active"):
         snap = career_runner.snapshot()
         current_fans = snap.get("current_fans") or active_account["career"].get("fans")
+        # fans gained so far in the active career = current - fans at career start
+        fans_at_start = int(active_account["career"].get("fans") or 0)
+        live_gain = max(0, int(current_fans or 0) - fans_at_start)
+
+    # Persistent all-time totals (never capped by the 500-entry careers list)
+    with _fan_stats_lock:
+        all_time_base = _fan_stats.get("all_time_gained", total_gained)
+        all_time_careers = _fan_stats.get("all_time_careers", 0)
 
     return {
         "session_gained": _session_fans_gained,
         "today_gained": today_gained,
-        "total_gained": total_gained,
-        "careers_count": len(careers),
+        "total_gained": all_time_base + live_gain,
+        "careers_count": all_time_careers,
         "recent_careers": careers[-30:][::-1],   # newest first, last 30
         "current_fans": current_fans,
         "circle_info": circle_info,
@@ -2040,13 +2420,181 @@ async def get_fan_stats():
 async def clear_fan_stats():
     global _fan_stats, _session_fans_gained
     with _fan_stats_lock:
-        _fan_stats = {"careers": []}
+        _fan_stats = {"careers": [], "all_time_gained": 0, "all_time_careers": 0}
         _session_fans_gained = 0
         _save_fan_stats()
     return {"success": True}
 
+
+@app.post("/api/stats/backfill")
+async def backfill_fan_stats():
+    """Rebuild fan_stats.json by scanning all career log files for fans data."""
+    global _fan_stats, _session_fans_gained
+    import glob as _glob
+
+    log_dir = base_dir / "uma_runtime" / "bot_logs"
+    logs    = sorted(_glob.glob(str(log_dir / "career_log_*.json")))
+
+    careers      = []
+    total_gained = 0
+    total_count  = 0
+
+    for path in logs:
+        try:
+            with open(path, encoding="utf-8") as f:
+                d = json.load(f)
+        except Exception:
+            continue
+
+        status = d.get("status", "")
+        if status not in ("finished", "stopped", "error", "give_up"):
+            continue
+
+        # Scan only first 3 and last 5 turns for fans (finish endpoint has empty chara_info)
+        turns = d.get("turns") or []
+        def _scan(subset):
+            out = []
+            for t in subset:
+                for c in t.get("api_calls") or []:
+                    if c.get("direction") not in ("RES", "RESP"):
+                        continue
+                    ci = ((c.get("data") or {}).get("data") or {}).get("chara_info") or {}
+                    fans = ci.get("fans")
+                    if fans:
+                        out.append((int(fans), str(ci.get("card_id") or "")))
+            return out
+        head = _scan(turns[:3])
+        tail = _scan(turns[-5:])
+        if head or tail:
+            initial_fans = head[0][0] if head else tail[0][0]
+            final_fans, card_id = tail[-1] if tail else head[-1]
+        else:
+            initial_fans = final_fans = 0
+            card_id = ""
+
+        fans_gained = max(0, final_fans - initial_fans)
+        finished    = (status == "finished")
+        started_at  = d.get("started_at", "")
+
+        entry = {
+            "card_id":     card_id,
+            "preset":      d.get("preset_name", ""),
+            "date":        started_at[:10] if started_at else "",
+            "started_at":  started_at,
+            "fans_gained": fans_gained,
+            "final_fans":  final_fans,
+            "final_turn":  d.get("final_turn", 0),
+            "finished":    finished,
+        }
+        careers.append(entry)
+        if finished:
+            total_count  += 1
+            total_gained += fans_gained
+
+    careers = careers[-500:]
+    with _fan_stats_lock:
+        _fan_stats = {
+            "careers":          careers,
+            "all_time_gained":  total_gained,
+            "all_time_careers": total_count,
+        }
+        _save_fan_stats()
+
+    return {
+        "success":      True,
+        "entries":      len(careers),
+        "finished":     total_count,
+        "total_gained": total_gained,
+    }
+
+
+
+@app.get("/api/career/log-detail")
+async def career_log_detail(started_at: str = ""):
+    """
+    Return a summary of a specific career log file: final stats, fans, skills selected.
+    Matches by started_at field inside the log (since filenames use ended_at timestamp).
+    """
+    log_dir = base_dir / "uma_runtime" / "bot_logs"
+    target = started_at.strip()
+
+    # Try latest_career_log.json shortcut first (no started_at needed, just omit it)
+    matched = None
+    if not target:
+        latest = log_dir / "latest_career_log.json"
+        if latest.exists():
+            matched = latest
+    else:
+        import glob as _glob
+        for path in sorted(_glob.glob(str(log_dir / "career_log_*.json"))):
+            try:
+                with open(path, encoding="utf-8") as f:
+                    first_chunk = f.read(512)  # started_at is always near the top
+                if repr(target) in first_chunk or target in first_chunk:
+                    matched = Path(path)
+                    break
+            except Exception:
+                continue
+
+    if matched is None:
+        return {"error": "log not found", "started_at": target}
+
+    try:
+        with open(matched, encoding="utf-8") as f:
+            d = json.load(f)
+    except Exception as e:
+        return {"error": str(e)}
+
+    turns = d.get("turns") or []
+    last_turn = turns[-1] if turns else {}
+
+    # ── final stats ──────────────────────────────────────────────────────────
+    final_stats = last_turn.get("stats") or {}
+
+    # ── final fans (last race_out / any RESP with chara_info.fans) ───────────
+    final_fans = 0
+    initial_fans = 0
+    _found_any = False
+    for t in turns:
+        for c in t.get("api_calls") or []:
+            if c.get("direction") not in ("RES", "RESP"):
+                continue
+            ci = ((c.get("data") or {}).get("data") or {}).get("chara_info") or {}
+            fans = ci.get("fans")
+            if fans:
+                if not _found_any:
+                    initial_fans = int(fans)
+                    _found_any = True
+                final_fans = int(fans)
+
+    # ── skills selected (last turn with non-empty bot_skill_selected) ─────────
+    skills_selected = []
+    for t in reversed(turns):
+        sel = t.get("bot_skill_selected") or []
+        if sel:
+            skills_selected = sel
+            break
+
+    # ── owned skills at end ───────────────────────────────────────────────────
+    owned_skills = last_turn.get("owned_skills") or []
+
+    return {
+        "preset_name":     d.get("preset_name", ""),
+        "status":          d.get("status", ""),
+        "started_at":      d.get("started_at", ""),
+        "ended_at":        d.get("ended_at", ""),
+        "final_turn":      d.get("final_turn", 0),
+        "final_stats":     final_stats,
+        "final_fans":      final_fans,
+        "fans_gained":     max(0, final_fans - initial_fans),
+        "skills_selected": skills_selected,
+        "owned_skills":    owned_skills,
+        "log_file":        matched.name,
+    }
+
 _sniffer_session = None
 _sniffer_log = []
+_sniffer_filter = []
 _sniffer_lock = threading.Lock()
 
 SNIFFER_JS = r'''
@@ -2203,18 +2751,31 @@ SNIFFER_JS = r'''
 })();
 '''
 
+class SniffStartRequest(BaseModel):
+    endpoints: list = []  # if non-empty, only capture these endpoint names (substring match)
+
 @app.post("/api/debug/sniff_start")
-async def sniff_start():
-    global _sniffer_session, _sniffer_log
+async def sniff_start(req: SniffStartRequest = SniffStartRequest()):
+    global _sniffer_session, _sniffer_log, _sniffer_filter
     if _sniffer_session:
         return {"error": "already sniffing"}
     try:
         import frida as _frida
         _sniffer_log = []
+        _sniffer_filter = [e.lower() for e in req.endpoints]  # empty = capture all
         session = _frida.attach(PROCESS_NAME)
         script = session.create_script(SNIFFER_JS)
-        # Track the most recently seen endpoint name so we can pair it with the response body
+        # CompressRequest fires BEFORE the TLS write, so request_body arrives
+        # before the matching endpoint message. Buffer it and pair on endpoint arrival.
         _last_endpoint = [None]
+        _pending_request_body = [None]
+        _pending_response_body = [None]
+
+        def _ep_matches(ep):
+            if not _sniffer_filter:
+                return True
+            ep_lower = ep.lower()
+            return any(f in ep_lower for f in _sniffer_filter)
 
         def on_msg(message, data):
             if message.get('type') != 'send':
@@ -2222,35 +2783,45 @@ async def sniff_start():
             payload = message.get('payload') or {}
             msg_type = payload.get('type')
 
-            if msg_type == 'endpoint':
-                ep = payload.get('endpoint', '')
-                _last_endpoint[0] = ep
-                entry = {"endpoint": ep, "payload": None}
-                with _sniffer_lock:
-                    _sniffer_log.append(entry)
-                    print(f"[SNIFF] {ep}")
+            if msg_type == 'request_body' and data:
+                # Buffer — endpoint name arrives next (TLS write fires after compress)
+                try:
+                    import msgpack as _msgpack
+                    _pending_request_body[0] = _msgpack.unpackb(bytes(data), raw=False, strict_map_key=False)
+                except Exception as e:
+                    print(f"[SNIFF:request_body] decode error: {e}")
 
-            elif msg_type in ('response_body', 'request_body') and data:
-                # Decode clean msgpack from HttpHelper hooks
+            elif msg_type == 'response_body' and data:
                 try:
                     import msgpack as _msgpack
                     decoded = _msgpack.unpackb(bytes(data), raw=False, strict_map_key=False)
-                    # For responses, data is nested under 'data' key
-                    if msg_type == 'response_body' and isinstance(decoded, dict):
-                        inner = decoded.get('data', decoded)
-                    else:
-                        inner = decoded
-                    ep = _last_endpoint[0] or '?'
-                    entry = {"endpoint": ep, "type": msg_type, "payload": inner}
-                    with _sniffer_lock:
-                        _sniffer_log.append(entry)
-                        print(f"[SNIFF:{msg_type}] {ep} → {json.dumps(inner, ensure_ascii=False, default=str)[:300]}")
-                except Exception as dec_err:
-                    print(f"[SNIFF:{msg_type}] decode error: {dec_err}")
+                    _pending_response_body[0] = decoded.get('data', decoded) if isinstance(decoded, dict) else decoded
+                except Exception as e:
+                    print(f"[SNIFF:response_body] decode error: {e}")
+
+            elif msg_type == 'endpoint':
+                ep = payload.get('endpoint', '')
+                _last_endpoint[0] = ep
+
+                req_body = _pending_request_body[0]
+                _pending_request_body[0] = None
+                resp_body = _pending_response_body[0]
+                _pending_response_body[0] = None
+
+                if _ep_matches(ep):
+                    print(f"[SNIFF] {ep}")
+                    if req_body is not None:
+                        with _sniffer_lock:
+                            _sniffer_log.append({"endpoint": ep, "type": "request_body", "payload": req_body})
+                    if resp_body is not None:
+                        with _sniffer_lock:
+                            _sniffer_log.append({"endpoint": ep, "type": "response_body", "payload": resp_body})
+
         script.on('message', on_msg)
         script.load()
         _sniffer_session = (session, script)
-        return {"success": True, "message": "Sniffing started — now go save a deck in-game, then call /api/debug/sniff_stop"}
+        filter_msg = f" (filtering: {req.endpoints})" if req.endpoints else " (capturing all endpoints)"
+        return {"success": True, "message": f"Sniffing started{filter_msg} — run a career, then call /api/debug/sniff_stop"}
     except Exception as e:
         return {"error": str(e)}
 
@@ -2268,12 +2839,79 @@ async def sniff_stop():
     _sniffer_session = None
     with _sniffer_lock:
         log = list(_sniffer_log)
-    return {"success": True, "captured_endpoints": log}
+    out_path = base_dir / "debug_sniff_log.json"
+    with open(out_path, "w", encoding="utf-8") as f:
+        json.dump({"captured_endpoints": log}, f, indent=2, ensure_ascii=False, default=str)
+    print(f"[sniff] log saved to {out_path}")
+    return {"success": True, "saved_to": str(out_path), "entry_count": len(log)}
 
 @app.get("/api/debug/sniff_log")
 async def sniff_log():
     with _sniffer_lock:
         return {"sniffing": _sniffer_session is not None, "captured_endpoints": list(_sniffer_log)}
+
+# ── Bot-side capture (no game required) ──────────────────────────────────────
+# Hooks the bot's own HTTP client to capture specific endpoint
+# request/response payloads without needing the game open.
+
+_bot_capture_log = []
+_bot_capture_filter = []   # endpoint substrings to capture; empty = all
+_bot_capture_active = False
+_bot_capture_lock = threading.Lock()
+
+class BotSniffStartRequest(BaseModel):
+    endpoints: list = ["single_mode_free/start", "single_mode_free/finish", "pre_single_mode"]
+
+@app.post("/api/debug/bot_sniff_start")
+async def bot_sniff_start(req: BotSniffStartRequest = BotSniffStartRequest()):
+    global _bot_capture_log, _bot_capture_filter, _bot_capture_active
+    if not active_client:
+        return {"error": "not logged in"}
+    _bot_capture_log = []
+    _bot_capture_filter = [e.lower() for e in req.endpoints]
+    _bot_capture_active = True
+
+    def _on_api_log(direction, ep, data, req_id=None):
+        if not _bot_capture_active:
+            return
+        ep_lower = ep.lower()
+        if _bot_capture_filter and not any(f in ep_lower for f in _bot_capture_filter):
+            return
+        # Strip common fields to keep the file readable
+        if direction == "REQ" and isinstance(data, dict):
+            payload = data.get("payload", data)
+            clean = {k: v for k, v in payload.items()
+                     if k not in ("viewer_id","device","device_id","device_name",
+                                  "graphics_device_name","ip_address","platform_os_version",
+                                  "carrier","keychain","locale","button_info",
+                                  "dmm_viewer_id","dmm_onetime_token",
+                                  "steam_id","steam_session_ticket")}
+        elif direction == "RES":
+            raw = data.get("data", data) if isinstance(data, dict) else data
+            clean = raw
+        else:
+            clean = data
+        with _bot_capture_lock:
+            _bot_capture_log.append({"direction": direction, "endpoint": ep, "payload": clean})
+        print(f"[BOT_SNIFF:{direction}] {ep}")
+
+    active_client.on_api_log = _on_api_log
+    filter_msg = req.endpoints if req.endpoints else ["all"]
+    return {"success": True, "message": f"Bot sniffing started, capturing: {filter_msg}"}
+
+@app.post("/api/debug/bot_sniff_stop")
+async def bot_sniff_stop():
+    global _bot_capture_active
+    _bot_capture_active = False
+    if active_client:
+        active_client.on_api_log = None
+    with _bot_capture_lock:
+        log = list(_bot_capture_log)
+    out_path = base_dir / "debug_bot_sniff_log.json"
+    with open(out_path, "w", encoding="utf-8") as f:
+        json.dump({"captured": log}, f, indent=2, ensure_ascii=False, default=str)
+    print(f"[bot_sniff] saved {len(log)} entries to {out_path}")
+    return {"success": True, "saved_to": str(out_path), "entry_count": len(log)}
 
 class RawCallRequest(BaseModel):
     endpoint: str
@@ -2331,6 +2969,175 @@ async def get_image(image_name: str):
     
     raise HTTPException(status_code=404, detail="Image not found")
 
+
+# ── AI endpoints ──────────────────────────────────────────────────────────────
+
+@app.get("/api/ai/status")
+async def ai_status():
+    try:
+        from career_bot.ai_dataset import dataset_status
+        return dataset_status(bot_logs_dir)
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/api/ai/train-now")
+async def ai_train_now():
+    try:
+        from career_bot.ai_trainer import train_once
+        from career_bot.ai_dataset import ai_root_from_output_dir
+        root = ai_root_from_output_dir(bot_logs_dir)
+        run_info = train_once(root)
+        return {"success": True, **run_info}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/ai/advisor/latest")
+async def ai_advisor_latest():
+    try:
+        from career_bot.ai_advisor import post_run_advice
+        return post_run_advice(bot_logs_dir)
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/api/ai/advisor/programs")
+async def ai_advisor_programs():
+    try:
+        from career_bot.ai_advisor import all_race_program_hints
+        return {"programs": all_race_program_hints(bot_logs_dir)}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/api/ai/advisor/program/{program_id}")
+async def ai_advisor_program(program_id: str):
+    try:
+        from career_bot.ai_advisor import race_program_hint
+        return race_program_hint(program_id, bot_logs_dir)
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/api/ai/auto-training/status")
+async def ai_trainer_status():
+    try:
+        from career_bot.ai_trainer import trainer_status
+        return trainer_status(bot_logs_dir)
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/api/ai/auto-training/config")
+async def ai_auto_config_get():
+    try:
+        from career_bot.ai_trainer import load_auto_config
+        from career_bot.ai_dataset import ai_root_from_output_dir
+        root = ai_root_from_output_dir(bot_logs_dir)
+        return load_auto_config(root)
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/api/ai/auto-training/config")
+async def ai_auto_config_set(request: Request):
+    try:
+        from career_bot.ai_trainer import save_auto_config
+        from career_bot.ai_dataset import ai_root_from_output_dir
+        body = await request.json()
+        root = ai_root_from_output_dir(bot_logs_dir)
+        save_auto_config(root, body)
+        return {"success": True}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/ai/dashboard")
+async def ai_dashboard():
+    try:
+        from career_bot.ai_trainer import latest_dashboard
+        return latest_dashboard(bot_logs_dir)
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/api/ai/rebuild")
+async def ai_rebuild_from_logs():
+    try:
+        from career_bot.ai_dataset import rebuild_from_career_logs
+        result = rebuild_from_career_logs(base_dir)
+        return result
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+# ── race solver API ────────────────────────────────────────────────────────────
+
+@app.get("/api/solver/status")
+async def solver_status_endpoint():
+    try:
+        from career_bot.race_solver import solver_status
+        return solver_status(base_dir)
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/solver/plan/{preset_name}")
+async def solver_get_plan(preset_name: str):
+    try:
+        from career_bot.race_solver import load_plan, plan_summary
+        plan = load_plan(base_dir, preset_name)
+        return plan_summary(plan)
+    except Exception as e:
+        return {"available": False, "error": str(e)}
+
+
+@app.post("/api/solver/run")
+async def solver_run(request: Request):
+    try:
+        body = await request.json()
+        preset_name = str(body.get("preset_name") or "")
+        if not preset_name:
+            return {"success": False, "error": "preset_name required"}
+        from career_bot.presets import PresetStore
+        from career_bot.race_solver import solve
+        store = PresetStore(base_dir)
+        preset = store.load(preset_name)
+        if not preset:
+            return {"success": False, "error": f"Preset '{preset_name}' not found"}
+        # Use chara_info from body if provided (live solve during career)
+        chara_info = body.get("chara_info") or {}
+        current_turn = int(body.get("current_turn") or 1)
+        plan = solve(base_dir, preset, chara_info=chara_info or None, current_turn=current_turn)
+        return plan
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/solver/candidates/{preset_name}")
+async def solver_candidates(preset_name: str):
+    """Return scored race candidates for a preset (for UI preview)."""
+    try:
+        from career_bot.presets import PresetStore
+        from career_bot.race_solver import _race_candidates
+        store = PresetStore(base_dir)
+        preset = store.load(preset_name)
+        if not preset:
+            return {"success": False, "error": f"Preset '{preset_name}' not found"}
+        chara = {
+            "proper_ground_turf": 8, "proper_ground_dirt": 8,
+            "proper_distance_short": 8, "proper_distance_mile": 8,
+            "proper_distance_middle": 8, "proper_distance_long": 8,
+        }
+        candidates = _race_candidates(base_dir, preset, chara)
+        candidates.sort(key=lambda r: (int(r["turn"]), -float(r.get("score") or 0)))
+        return {"success": True, "candidates": candidates}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+# ── static files ───────────────────────────────────────────────────────────────
 
 @app.get("/styles.css")
 async def styles_css():
@@ -2402,9 +3209,6 @@ def kill_process_by_name(name):
     except Exception:
         pass
 
-def kill_listeners_on_port(port):
-    if os.name != 'nt':
-        return
 def kill_listeners_on_port(port):
     if os.name != 'nt':
         return
@@ -2571,8 +3375,6 @@ if __name__ == "__main__":
         pass
 
     set_console_topmost()
-    kill_listeners_on_port(1616)
-    if not refresh_auth_before_serving():
-        raise SystemExit(1)
-    print("Access the Web UI at: http://127.0.0.1:1616", flush=True)
-    uvicorn.run(app, host="127.0.0.1", port=1616, log_level="error")
+    kill_listeners_on_port(8000)
+    print("[ok] Starting server on http://localhost:8000", flush=True)
+    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")

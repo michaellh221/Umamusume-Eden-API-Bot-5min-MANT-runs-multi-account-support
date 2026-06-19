@@ -79,6 +79,8 @@ class MantStrategy(ScenarioStrategy):
             self.event_manager = EventManager(self.race_planner.base_dir)
         # Populated by _best_command; read by runner for the diagnostics trace panel.
         self._last_trace = {"reason": "", "rows": []}
+        # Stored each call so choose_from_event can weight event scoring by priorities.
+        self._current_preset = None
 
     def next_decision(self, state, preset):
         """
@@ -86,6 +88,7 @@ class MantStrategy(ScenarioStrategy):
         Called once per turn by CareerRunner.
         Returns a Decision(action_type, payload, reason_string).
         """
+        self._current_preset = preset  # expose for choose_from_event
         data = state.get("data") or {}
         chara = data.get("chara_info") or {}
         home = data.get("home_info") or {}
@@ -594,5 +597,6 @@ class MantStrategy(ScenarioStrategy):
 
     def choose_from_event(self, event, current_turn):
         if self.event_manager:
-            return self.event_manager.choose(event)
+            stat_priority = getattr(self._current_preset, "stat_priority", None)
+            return self.event_manager.choose(event, stat_priority=stat_priority)
         return 1

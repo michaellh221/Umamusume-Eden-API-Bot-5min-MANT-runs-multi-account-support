@@ -12,6 +12,9 @@
     </script>
     <title>Sweepy改二</title>
     <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap">
 
 </head>
 <body>
@@ -27,31 +30,29 @@
     </div>
     <div id="app">
         <header class="navbar">
-            <div class="navbar-title">
-                <h1 id="theme-toggle" class="title">SWEEPY<span>改二</span></h1>
-            </div>
-
-            <div class="navbar-main">
+            <div class="navbar-row navbar-row-top">
+                <div class="navbar-title">
+                    <h1 id="theme-toggle" class="title">SWEEPY<span>改二</span></h1>
+                </div>
                 <div id="account-strip" class="account-strip"></div>
-
-                <div id="turn-delay-control" class="turn-delay-control">
-                    <div class="delay-group">
-                        <span class="turn-delay-label">DELAY(S)</span>
-                        <input id="turn-delay-min" class="turn-delay-input" type="number" min="0" step="0.1" value="1.6">
-                        <span class="turn-delay-separator">–</span>
-                        <input id="turn-delay-max" class="turn-delay-input" type="number" min="0" step="0.1" value="3.7">
-                    </div>
-                    <div class="control-btns">
-                        <button id="tempt-fate-btn" class="btn btn-sm turn-delay-button" type="button">TEMPT FATE</button>
-                        <button id="burn-clocks-btn" class="btn btn-sm turn-delay-button" type="button">BURN CLOCKS: OFF</button>
-                        <button id="dev-career-btn" class="btn btn-sm turn-delay-button" type="button">LOOP: OFF</button>
-                        <button id="careers-limit-btn" class="btn btn-sm turn-delay-button" type="button" title="Stop loop after N careers (0 = infinite)">STOP: ∞</button>
-                    </div>
+                <div class="navbar-meta">
+                    <button id="logout-btn" class="btn btn-sm logout-btn" style="display:none">LOGOUT</button>
                 </div>
             </div>
-
-            <div class="navbar-meta">
-                <button id="logout-btn" class="btn btn-sm logout-btn" style="display:none">LOGOUT</button>
+            <div id="turn-delay-control" class="navbar-row navbar-row-bottom">
+                <div class="delay-group">
+                    <span class="turn-delay-label">DELAY(S)</span>
+                    <input id="turn-delay-min" class="turn-delay-input" type="number" min="0" step="0.1" value="1.6">
+                    <span class="turn-delay-separator">–</span>
+                    <input id="turn-delay-max" class="turn-delay-input" type="number" min="0" step="0.1" value="3.7">
+                </div>
+                <div class="control-btns">
+                    <button id="tempt-fate-btn" class="btn btn-sm turn-delay-button" type="button">TEMPT FATE</button>
+                    <button id="burn-clocks-btn" class="btn btn-sm turn-delay-button" type="button">BURN CLOCKS: OFF</button>
+                    <button id="showtime-btn" class="btn btn-sm turn-delay-button" type="button">SHOWTIME: OFF</button>
+                    <button id="dev-career-btn" class="btn btn-sm turn-delay-button" type="button">LOOP: OFF</button>
+                    <button id="careers-limit-btn" class="btn btn-sm turn-delay-button" type="button" title="Stop loop after N careers (0 = infinite)">STOP: ∞</button>
+                </div>
             </div>
         </header>
         <main class="main-container">
@@ -81,19 +82,108 @@
             </div>
             <div id="dashboard-view" class="dashboard-container">
 
-                <!-- ── Mode bar ── -->
-                <div class="mode-bar">
-                    <button class="mode-btn is-active" data-mode="setup">SETUP</button>
-                    <button class="mode-btn" data-mode="diagnostics">MONITOR</button>
+            <!-- ── Nav bar: modal launchers + run control ── -->
+            <div class="dash-nav">
+                <div class="dash-nav-left">
+                    <button class="dash-nav-btn" id="nav-setup-btn">SETUP</button>
+                    <button class="dash-nav-btn" id="nav-stats-btn">CAREER HISTORY</button>
+                    <button class="dash-nav-btn" id="nav-ai-btn">AI</button>
                 </div>
+                <div class="dash-nav-right">
+                    <div class="dash-run-wrap">
+                        <button id="start-career-btn" class="btn btn-primary dash-run-btn" type="button" disabled>RUN CAREER</button>
+                        <div id="start-status" class="start-status"></div>
+                    </div>
+                </div>
+            </div>
 
-                <!-- ── SETUP mode ── -->
-                <div class="mode-pane is-active" id="mode-setup">
-                    <div class="split-left" id="setup-panel">
-                        <div class="panel-header">
-                            <span class="panel-header-title">SETUP</span>
+            <!-- ── Main monitor view (always visible) ── -->
+            <div class="diag-layout">
+                <!-- Left column -->
+                <div class="diag-left">
+                    <div id="diag-portraits-panel" class="diag-portraits-panel" style="display:none;"></div>
+                    <div class="diag-card" id="diag-career-card">
+                        <div class="diag-card-title-row">
+                            <span class="diag-card-title">CAREER</span>
+                            <span id="diag-running-badge" class="diag-running-badge" style="display:none">RUNNING</span>
                         </div>
-                        <div class="panel-body">
+                        <div id="diag-career-body" class="diag-career-body">
+                            <div class="diag-career-empty">No active career</div>
+                        </div>
+                    </div>
+                    <div class="diag-card" id="diag-metrics-card">
+                        <div class="diag-card-title-row">
+                            <span class="diag-card-title">LIFETIME METRICS</span>
+                            <span class="diag-badge-bot">BOT</span>
+                        </div>
+                        <div class="diag-metric-row">
+                            <span class="diag-metric-label">TOTAL FAN GAIN</span>
+                            <span class="diag-metric-value" id="diag-total-fans">—</span>
+                        </div>
+                        <div class="diag-metric-row">
+                            <span class="diag-metric-label">CURRENT RUN FANS</span>
+                            <span class="diag-metric-value" id="diag-current-fans">—</span>
+                        </div>
+                        <div class="diag-metric-row">
+                            <span class="diag-metric-label">RUNTIME</span>
+                            <span class="diag-metric-value" id="diag-runtime">—</span>
+                        </div>
+                        <div class="diag-metric-row">
+                            <span class="diag-metric-label">CAREERS DONE</span>
+                            <span class="diag-metric-value" id="diag-careers-done">—</span>
+                        </div>
+                    </div>
+                    <div class="diag-card" id="diag-club-card">
+                        <div class="diag-card-title">CLUB</div>
+                        <div id="diag-club-display" class="diag-club-display">—</div>
+                    </div>
+                    <div class="diag-card" id="diag-skill-opt-card">
+                        <div class="diag-card-title-row">
+                            <span class="diag-card-title">SKILL OPTIMIZER</span>
+                            <span id="diag-skill-sp-badge" class="diag-turn-badge">— SP</span>
+                        </div>
+                        <div id="diag-skill-opt-body" class="diag-skill-opt-body">
+                            <div class="diag-career-empty">No active career</div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Right column: inventory + action log -->
+                <div class="diag-right">
+                    <div class="diag-log-header">
+                        <span class="diag-card-title">INVENTORY</span>
+                    </div>
+                    <div id="diag-inventory-panel" class="diag-inv-panel">
+                        <span style="opacity:0.3;font-size:0.7rem;">No active career</span>
+                    </div>
+                    <div class="diag-log-header" style="margin-top:0.5rem;">
+                        <span class="diag-card-title">ACTION LOG</span>
+                        <span id="diag-turn-badge" class="diag-turn-badge">— TURNS</span>
+                    </div>
+                    <div id="diag-action-log" class="diag-action-log"></div>
+                </div>
+            </div>
+            <!-- Footer controls -->
+            <div class="diag-footer">
+                <button id="diag-resume-btn" class="btn btn-primary diag-footer-btn" type="button">RESUME CAREER</button>
+                <button id="diag-stop-btn" class="btn diag-footer-btn" type="button">STOP</button>
+                <button id="diag-give-up-btn" class="btn diag-footer-btn btn-danger" type="button">GIVE UP</button>
+                <button id="diag-sync-btn" class="btn diag-footer-btn" type="button">SYNC</button>
+                <span id="diag-footer-label" class="diag-footer-label">—</span>
+            </div>
+
+            <!-- ════════════════════════════════════════════════════════════
+                 SETUP MODAL
+                 ════════════════════════════════════════════════════════════ -->
+            <div id="setup-modal" class="shell-modal" style="display:none;">
+                <div class="shell-panel">
+                    <div class="shell-topbar">
+                        <span class="shell-title">SETUP</span>
+                        <button class="btn btn-sm shell-done-btn" id="setup-modal-close">DONE</button>
+                    </div>
+                    <div class="shell-body">
+                        <!-- Team slots -->
+                        <div class="setup-modal-left">
+                            <div class="left-section-title">RUN SELECTION</div>
                             <div class="team-slots">
                                 <div class="team-item" id="team-slot-deck">
                                     <span class="team-item-role">Deck</span>
@@ -116,271 +206,289 @@
                                     <span class="team-item-empty">select a parent</span>
                                 </div>
                             </div>
-                            <div class="start-panel">
-                                <button id="start-career-btn" class="btn btn-primary" type="button" disabled>RUN CAREER</button>
-                                <div id="start-status" class="start-status"></div>
+                            <div class="stat-priority-inline">
+                                <div class="left-section-title">STAT PRIORITY</div>
+                                <div class="left-section-subtitle">drag to reorder — top = highest priority</div>
+                                <div id="stat-priority-list" style="display:flex;flex-direction:column;gap:0.3rem;margin-top:0.4rem;"></div>
                             </div>
-                        </div>
-                    </div>
-                    <div class="split-right" id="content-panel">
-                        <div class="panel-tabs">
-                            <button class="panel-tab is-active" data-tab="tab-preset">PRESET</button>
-                            <button class="panel-tab" data-tab="tab-deck">DECK</button>
-                            <button class="panel-tab" data-tab="tab-parents">PARENTS</button>
-                            <button class="panel-tab" data-tab="tab-skills">SKILLS</button>
-                            <button class="panel-tab" data-tab="tab-stats">STATS</button>
-                        </div>
-                        <div class="panel-body">
+                            <div class="race-schedule-inline">
+                                <div class="left-section-title">RACE SCHEDULE</div>
+                                <div id="race-body" class="collapsible-body expanded" style="height:auto;opacity:1;">
 
-                            <!-- ── PRESET TAB ── -->
-                            <div class="tab-pane is-active" id="tab-preset">
-                                <section class="dashboard-section" id="preset-section">
-                                    <h2 class="dashboard-section-title">PRESET CONFIGURATION</h2>
-                                    <div class="master-data-panel">
-                                        <label class="form-label" for="preset-select">ACTIVE PRESET</label>
-                                        <div class="preset-control-row preset-control-row-actions">
-                                            <select id="preset-select" class="form-input master-data-input preset-input"></select>
-                                            <button id="preset-add-btn" class="btn btn-sm preset-action-btn" type="button">NEW</button>
-                                            <button id="preset-del-btn" class="btn btn-sm btn-danger preset-action-btn" type="button">DEL</button>
-                                        </div>
-                                        <div class="preset-control-row preset-control-grid">
-                                            <div class="preset-field">
-                                                <label class="form-label" for="preset-running-style">RUNNING STYLE</label>
-                                                <select id="preset-running-style" class="form-input master-data-input preset-input">
-                                                    <option value="1">Front Runner</option>
-                                                    <option value="2">Pace Chaser</option>
-                                                    <option value="3">Late Surger</option>
-                                                    <option value="4">End Closer</option>
-                                                </select>
-                                            </div>
-                                            <div class="preset-field">
-                                                <label class="form-label" for="preset-target-distance">DISTANCE</label>
-                                                <select id="preset-target-distance" class="form-input master-data-input preset-input">
-                                                    <option value="0">Any</option>
-                                                    <option value="1">Short</option>
-                                                    <option value="2">Mile</option>
-                                                    <option value="3">Medium</option>
-                                                    <option value="4">Long</option>
-                                                </select>
-                                            </div>
-                                            <div class="preset-field">
-                                                <label class="form-label" for="preset-skill-threshold">MIN SKILL PT</label>
-                                                <input id="preset-skill-threshold" class="form-input master-data-input preset-input" type="number">
-                                            </div>
-                                            <div class="preset-field" style="justify-content:flex-end;align-items:flex-end;display:flex;">
-                                                <label style="display:flex;align-items:center;gap:0.4rem;cursor:pointer;font-size:0.75rem;font-weight:600;letter-spacing:0.05em;color:var(--text-secondary,#aaa);">
-                                                    <input id="preset-auto-buy-override" type="checkbox" style="width:1rem;height:1rem;cursor:pointer;">
-                                                    AUTO-BUY OVERRIDES SP THRESHOLD
-                                                </label>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </section>
-                                <section class="dashboard-section" id="master-data-section">
-                                    <h2 class="dashboard-section-title">MASTER DATA</h2>
-                                    <div class="master-data-panel">
-                                        <label class="form-label" for="master-data-path">MASTER.MDB PATH</label>
-                                        <div class="master-data-row">
-                                            <input id="master-data-path" class="form-input master-data-input" type="text" spellcheck="false">
-                                            <button id="master-data-save-btn" class="btn btn-sm" type="button">SAVE</button>
-                                        </div>
-                                        <div id="master-data-status" class="master-data-status"></div>
-                                    </div>
-                                </section>
-                                <section class="dashboard-section" id="race-schedule-section">
-                                    <h2 class="dashboard-section-title section-title-toggle" id="race-toggle">
-                                        <span class="collapse-chevron" id="race-chevron">&#9658;</span>
-                                        RACE SCHEDULE
-                                    </h2>
-                                    <div id="race-body" class="collapsible-body">
-                                        <div id="race-slot-popup-overlay" class="race-slot-popup-overlay" style="display: none;">
-                                            <div class="race-slot-popup">
-                                                <div class="race-slot-popup-header">
-                                                    <div id="race-slot-popup-title" class="race-slot-popup-title">Select Race</div>
-                                                    <button id="race-slot-popup-close" class="race-slot-popup-close">&times;</button>
+                                            <!-- Solver mode selector -->
+                                            <div class="solver-mode-row">
+                                                <span class="form-label">MODE</span>
+                                                <div class="solver-mode-btns" id="solver-mode-btns">
+                                                    <button class="solver-mode-btn is-active" data-mode="manual">MANUAL</button>
+                                                    <button class="solver-mode-btn" data-mode="auto">AUTO SOLVER</button>
+                                                    <button class="solver-mode-btn" data-mode="off">OFF</button>
                                                 </div>
-                                                <div id="race-slot-popup-body" class="race-slot-popup-body"></div>
+                                            </div>
+
+                                            <!-- Auto-solver panel -->
+                                            <div id="solver-auto-panel" class="solver-auto-panel" style="display:none;">
+                                                <div class="solver-cfg-grid">
+                                                    <div class="preset-field">
+                                                        <label class="form-label" for="solver-max-streak">MAX CONSECUTIVE</label>
+                                                        <select id="solver-max-streak" class="form-input preset-input">
+                                                            <option value="1">1 race then train</option>
+                                                            <option value="2" selected>2 in a row</option>
+                                                            <option value="3">3 in a row</option>
+                                                            <option value="4">4 in a row</option>
+                                                            <option value="5">5 in a row</option>
+                                                        </select>
+                                                    </div>
+                                                    <div class="preset-field">
+                                                        <label class="form-label" for="solver-apt-floor">MIN APTITUDE</label>
+                                                        <select id="solver-apt-floor" class="form-input preset-input">
+                                                            <option value="6" selected>B (default)</option>
+                                                            <option value="7">A</option>
+                                                            <option value="8">S</option>
+                                                        </select>
+                                                    </div>
+                                                    <div class="preset-field solver-check-field">
+                                                        <label class="form-label">OPTIONS</label>
+                                                        <label class="form-checkbox-label">
+                                                            <input type="checkbox" id="solver-include-op" class="preset-input"> Include OP races
+                                                        </label>
+                                                        <label class="form-checkbox-label">
+                                                            <input type="checkbox" id="solver-allow-summer" class="preset-input"> Allow summer racing
+                                                        </label>
+                                                    </div>
+                                                </div>
+                                                <div class="solver-action-row">
+                                                    <button id="solver-run-btn" class="btn btn-sm" type="button">SOLVE NOW</button>
+                                                    <span id="solver-status-text" class="solver-status-text"></span>
+                                                </div>
+                                                <div id="solver-plan-panel" class="solver-plan-panel" style="display:none;">
+                                                    <div class="solver-plan-header">
+                                                        <span id="solver-plan-label" class="solver-plan-label"></span>
+                                                    </div>
+                                                    <div id="solver-plan-table" class="solver-plan-table"></div>
+                                                </div>
+                                            </div>
+
+                                            <!-- Manual race slot UI (existing) -->
+                                            <div id="solver-manual-panel">
+                                                <button id="race-manual-open-btn" class="btn btn-sm" type="button" style="width:100%;margin-top:0.5rem;">EDIT RACE SCHEDULE</button>
+                                            </div>
+
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Setup tabs -->
+                        <div class="setup-modal-right">
+                            <div class="panel-tabs">
+                                <button class="panel-tab is-active" data-tab="tab-preset">RUN STYLE</button>
+                                <button class="panel-tab" data-tab="tab-deck">DECK</button>
+                                <button class="panel-tab" data-tab="tab-parents">PARENTS</button>
+                            </div>
+                            <div class="panel-body">
+
+                                <!-- PRESET TAB -->
+                                <div class="tab-pane is-active" id="tab-preset">
+                                    <section class="dashboard-section" id="preset-section">
+                                        <h2 class="dashboard-section-title">RUN STYLE</h2>
+                                        <div class="master-data-panel">
+                                            <label class="form-label" for="preset-select">ACTIVE PRESET</label>
+                                            <div class="preset-control-row preset-control-row-actions">
+                                                <select id="preset-select" class="form-input master-data-input preset-input"></select>
+                                                <button id="preset-add-btn" class="btn btn-sm preset-action-btn" type="button">NEW</button>
+                                                <button id="preset-del-btn" class="btn btn-sm btn-danger preset-action-btn" type="button">DEL</button>
+                                            </div>
+                                            <div class="preset-control-row preset-control-grid">
+                                                <div class="preset-field">
+                                                    <label class="form-label" for="preset-running-style">RUNNING STYLE</label>
+                                                    <select id="preset-running-style" class="form-input master-data-input preset-input">
+                                                        <option value="1">Front Runner</option>
+                                                        <option value="2">Pace Chaser</option>
+                                                        <option value="3">Late Surger</option>
+                                                        <option value="4">End Closer</option>
+                                                    </select>
+                                                </div>
+                                                <div class="preset-field">
+                                                    <label class="form-label" for="preset-target-distance">DISTANCE</label>
+                                                    <select id="preset-target-distance" class="form-input master-data-input preset-input">
+                                                        <option value="0">Any</option>
+                                                        <option value="1">Short</option>
+                                                        <option value="2">Mile</option>
+                                                        <option value="3">Medium</option>
+                                                        <option value="4">Long</option>
+                                                    </select>
+                                                </div>
+                                                <div class="preset-field">
+                                                    <label class="form-label" for="preset-skill-optimizer-mode">SKILL OPTIMIZER</label>
+                                                    <select id="preset-skill-optimizer-mode" class="form-input master-data-input preset-input">
+                                                        <option value="team_trials">Team Trials (Consistency)</option>
+                                                        <option value="score">Score (Grade Value)</option>
+                                                    </select>
+                                                </div>
                                             </div>
                                         </div>
-                                        <div class="race-options-content" id="race-options-content"></div>
-                                    </div>
-                                </section>
-                            </div>
-
-                            <!-- ── DECK TAB ── -->
-                            <div class="tab-pane" id="tab-deck">
-                                <section class="dashboard-section">
-                                    <h2 class="dashboard-section-title section-title-toggle" id="decks-toggle">
-                                        <span class="collapse-chevron expanded" id="decks-chevron">&#9658;</span>
-                                        DECKS
-                                    </h2>
-                                    <div id="decks-body" class="collapsible-body expanded">
-                                        <div id="deck-list"></div>
-                                    </div>
-                                </section>
-                                <section class="dashboard-section">
-                                    <div style="display:flex;align-items:center;gap:0.75rem;">
-                                        <h2 class="dashboard-section-title" style="flex:1;margin:0;">BUILD DECK <span id="deck-builder-count" style="font-size:0.8rem;opacity:0.7;">(0/6 cards)</span></h2>
-                                        <button id="deck-builder-clear-btn" class="btn btn-sm" type="button" style="flex-shrink:0;">CLEAR</button>
-                                        <button id="deck-builder-save-btn" class="btn btn-sm btn-primary" type="button" style="flex-shrink:0;" disabled>SAVE TO SLOT 1</button>
-                                    </div>
-                                    <div id="deck-builder-slots" style="display:flex;gap:0.5rem;flex-wrap:wrap;padding:0.75rem 0 0.25rem;">
-                                    </div>
-                                    <div id="deck-builder-status" style="font-size:0.78rem;color:#a1a1aa;padding:0.25rem 0 0.5rem;min-height:1.2em;"></div>
-                                </section>
-                                <section class="dashboard-section">
-                                    <h2 class="dashboard-section-title section-title-toggle" id="cards-toggle">
-                                        <span class="collapse-chevron expanded" id="cards-chevron">&#9658;</span>
-                                        OWNED CARDS <span id="card-count"></span>
-                                    </h2>
-                                    <div id="card-grid-wrapper" class="collapsible-body expanded">
-                                        <div id="card-grid" class="data-grid"></div>
-                                    </div>
-                                </section>
-                                <section class="dashboard-section">
-                                    <h2 class="dashboard-section-title section-title-toggle" id="friends-toggle">
-                                        <span class="collapse-chevron expanded" id="friends-chevron">&#9658;</span>
-                                        FRIEND SUPPORTS <span id="friend-count"></span>
-                                        <button id="friend-refresh-btn" class="btn btn-sm section-title-action" type="button">REFRESH</button>
-                                    </h2>
-                                    <div id="friends-body" class="collapsible-body expanded">
-                                        <div class="friend-toolbar">
-                                            <div id="friend-status" class="friend-status">Loading friends...</div>
+                                    </section>
+                                    <section class="dashboard-section" id="master-data-section">
+                                        <h2 class="dashboard-section-title">MASTER DATA</h2>
+                                        <div class="master-data-panel">
+                                            <label class="form-label" for="master-data-path">MASTER.MDB PATH</label>
+                                            <div class="master-data-row">
+                                                <input id="master-data-path" class="form-input master-data-input" type="text" spellcheck="false">
+                                                <button id="master-data-save-btn" class="btn btn-sm" type="button">SAVE</button>
+                                            </div>
+                                            <div id="master-data-status" class="master-data-status"></div>
                                         </div>
-                                        <div id="friend-grid" class="data-grid"></div>
-                                    </div>
-                                </section>
-                            </div>
+                                    </section>
+                                </div>
 
-                            <!-- ── PARENTS TAB ── -->
-                            <div class="tab-pane" id="tab-parents">
-                                <section class="dashboard-section">
-                                    <h2 class="dashboard-section-title section-title-toggle" id="trainees-toggle">
-                                        <span class="collapse-chevron expanded" id="trainees-chevron">&#9658;</span>
-                                        TRAINEES <span id="uma-count"></span>
-                                    </h2>
-                                    <div id="trainees-body" class="collapsible-body expanded">
-                                        <div id="uma-grid" class="data-grid"></div>
-                                    </div>
-                                </section>
-                                <section class="dashboard-section">
-                                    <h2 class="dashboard-section-title section-title-toggle" id="parents-toggle">
-                                        <span class="collapse-chevron expanded" id="parents-chevron">&#9658;</span>
-                                        PARENTS <span id="parent-count"></span>
-                                    </h2>
-                                    <div id="parents-body" class="collapsible-body expanded">
-                                        <div id="parent-grid" class="data-grid"></div>
-                                    </div>
-                                </section>
-                                <section class="dashboard-section">
-                                    <div style="display:flex;align-items:center;gap:0.75rem;">
-                                        <h2 class="dashboard-section-title section-title-toggle" id="follow-parents-toggle" style="flex:1;margin:0;">
-                                            <span class="collapse-chevron" id="follow-parents-chevron">&#9658;</span>
-                                            FOLLOWED PLAYERS <span id="follow-parent-count"></span>
+                                <!-- DECK TAB -->
+                                <div class="tab-pane" id="tab-deck">
+                                    <section class="dashboard-section">
+                                        <h2 class="dashboard-section-title section-title-toggle" id="decks-toggle">
+                                            <span class="collapse-chevron expanded" id="decks-chevron">&#9658;</span>
+                                            DECKS
                                         </h2>
-                                        <button id="follow-parent-load-btn" class="btn btn-sm" style="flex-shrink:0;">LOAD</button>
-                                    </div>
-                                    <div id="follow-parents-body" class="collapsible-body">
-                                        <div id="follow-parent-status" style="padding:0.5rem 1rem;font-size:0.8rem;color:#a1a1aa;"></div>
-                                        <div id="follow-parent-grid" class="data-grid"></div>
-                                    </div>
-                                </section>
-                            </div>
-
-                            <!-- ── SKILLS TAB ── -->
-                            <div class="tab-pane" id="tab-skills">
-                                <section class="dashboard-section">
-                                    <h2 class="dashboard-section-title">SKILLS & STATS</h2>
-                                    <div class="master-data-panel">
-                                        <button id="preset-edit-skills-btn" class="btn btn-sm preset-wide-btn" type="button">CONFIGURE SKILLS (PRIORITIES & BLACKLIST)</button>
-                                        <div class="preset-field" style="margin-top:0.75rem;">
-                                            <label class="form-label">STAT PRIORITY <span style="font-size:0.7rem;opacity:0.6;">(drag to reorder — top = highest priority)</span></label>
-                                            <div id="stat-priority-list" style="display:flex;flex-direction:column;gap:0.3rem;margin-top:0.35rem;"></div>
+                                        <div id="decks-body" class="collapsible-body expanded">
+                                            <div id="deck-list"></div>
                                         </div>
-                                    </div>
-                                </section>
-                            </div>
+                                    </section>
+                                    <section class="dashboard-section">
+                                        <h2 class="dashboard-section-title section-title-toggle" id="friends-toggle">
+                                            <span class="collapse-chevron expanded" id="friends-chevron">&#9658;</span>
+                                            FRIEND SUPPORTS <span id="friend-count"></span>
+                                            <button id="friend-refresh-btn" class="btn btn-sm section-title-action" type="button">REFRESH</button>
+                                        </h2>
+                                        <div id="friends-body" class="collapsible-body expanded">
+                                            <div class="friend-toolbar">
+                                                <div id="friend-status" class="friend-status">Loading friends...</div>
+                                            </div>
+                                            <div id="friend-grid" class="data-grid"></div>
+                                        </div>
+                                    </section>
+                                </div>
 
-                            <!-- ── STATS TAB ── -->
-                            <div class="tab-pane" id="tab-stats">
-                                <section class="dashboard-section">
-                                    <h2 class="dashboard-section-title">FAN STATS</h2>
-                                    <div id="fan-stats-panel"></div>
-                                </section>
-                            </div>
+                                <!-- PARENTS TAB -->
+                                <div class="tab-pane" id="tab-parents">
+                                    <section class="dashboard-section">
+                                        <h2 class="dashboard-section-title section-title-toggle" id="trainees-toggle">
+                                            <span class="collapse-chevron expanded" id="trainees-chevron">&#9658;</span>
+                                            TRAINEES <span id="uma-count"></span>
+                                        </h2>
+                                        <div id="trainees-body" class="collapsible-body expanded">
+                                            <div id="uma-grid" class="data-grid"></div>
+                                        </div>
+                                    </section>
+                                    <section class="dashboard-section">
+                                        <h2 class="dashboard-section-title section-title-toggle" id="parents-toggle">
+                                            <span class="collapse-chevron expanded" id="parents-chevron">&#9658;</span>
+                                            PARENTS <span id="parent-count"></span>
+                                        </h2>
+                                        <div id="parents-body" class="collapsible-body expanded">
+                                            <div id="parent-grid" class="data-grid"></div>
+                                        </div>
+                                    </section>
+                                    <section class="dashboard-section">
+                                        <div style="display:flex;align-items:center;gap:0.75rem;">
+                                            <h2 class="dashboard-section-title section-title-toggle" id="follow-parents-toggle" style="flex:1;margin:0;">
+                                                <span class="collapse-chevron" id="follow-parents-chevron">&#9658;</span>
+                                                FOLLOWED PLAYERS <span id="follow-parent-count"></span>
+                                            </h2>
+                                            <button id="follow-parent-load-btn" class="btn btn-sm" style="flex-shrink:0;">LOAD</button>
+                                        </div>
+                                        <div id="follow-parents-body" class="collapsible-body">
+                                            <div id="follow-parent-status" style="padding:0.5rem 1rem;font-size:0.8rem;color:#a1a1aa;"></div>
+                                            <div id="follow-parent-grid" class="data-grid"></div>
+                                        </div>
+                                    </section>
+                                </div>
 
+                                <!-- SKILLS TAB -->
+
+
+                            </div>
                         </div>
-                    </div>
-                    <div class="split-gutter-controls" aria-label="Panel controls">
-                        <button class="panel-collapse-btn panel-collapse-btn-left" id="setup-collapse-btn" type="button" data-panel-label="Setup" title="Collapse setup" aria-label="Collapse setup"></button>
-                        <button class="panel-collapse-btn panel-collapse-btn-right" id="content-collapse-btn" type="button" data-panel-label="Library" title="Collapse library" aria-label="Collapse library"></button>
                     </div>
                 </div>
-
-                <!-- ── DIAGNOSTICS mode ── -->
-                <div class="mode-pane" id="mode-diagnostics">
-                    <div class="diag-layout">
-                        <!-- Left column -->
-                        <div class="diag-left">
-                            <!-- Career card -->
-                            <div class="diag-card" id="diag-career-card">
-                                <div class="diag-card-title-row">
-                                    <span class="diag-card-title">CAREER</span>
-                                    <span id="diag-running-badge" class="diag-running-badge" style="display:none">RUNNING</span>
-                                </div>
-                                <div id="diag-career-body" class="diag-career-body">
-                                    <div class="diag-career-empty">No active career</div>
-                                </div>
-                            </div>
-                            <!-- Lifetime metrics -->
-                            <div class="diag-card" id="diag-metrics-card">
-                                <div class="diag-card-title-row">
-                                    <span class="diag-card-title">LIFETIME METRICS</span>
-                                    <span class="diag-badge-bot">BOT</span>
-                                </div>
-                                <div class="diag-metric-row">
-                                    <span class="diag-metric-label">TOTAL FAN GAIN</span>
-                                    <span class="diag-metric-value" id="diag-total-fans">—</span>
-                                </div>
-                                <div class="diag-metric-row">
-                                    <span class="diag-metric-label">CURRENT RUN FANS</span>
-                                    <span class="diag-metric-value" id="diag-current-fans">—</span>
-                                </div>
-                                <div class="diag-metric-row">
-                                    <span class="diag-metric-label">RUNTIME</span>
-                                    <span class="diag-metric-value" id="diag-runtime">—</span>
-                                </div>
-                                <div class="diag-metric-row">
-                                    <span class="diag-metric-label">CAREERS DONE</span>
-                                    <span class="diag-metric-value" id="diag-careers-done">—</span>
-                                </div>
-                            </div>
-                            <!-- Club fan tracker -->
-                            <div class="diag-card" id="diag-club-card">
-                                <div class="diag-card-title">CLUB</div>
-                                <div id="diag-club-display" class="diag-club-display">—</div>
-                            </div>
-                        </div>
-                        <!-- Right column: action log -->
-                        <div class="diag-right">
-                            <div class="diag-log-header">
-                                <span class="diag-card-title">ACTION LOG</span>
-                                <span id="diag-turn-badge" class="diag-turn-badge">— TURNS</span>
-                            </div>
-                            <div id="diag-action-log" class="diag-action-log"></div>
-                        </div>
-                    </div>
-                    <!-- Footer controls -->
-                    <div class="diag-footer">
-                        <button id="diag-resume-btn" class="btn btn-primary diag-footer-btn" type="button">RESUME CAREER</button>
-                        <button id="diag-stop-btn" class="btn diag-footer-btn" type="button">STOP</button>
-                        <button id="diag-give-up-btn" class="btn diag-footer-btn btn-danger" type="button">GIVE UP</button>
-                        <button id="diag-sync-btn" class="btn diag-footer-btn" type="button">SYNC</button>
-                        <span id="diag-footer-label" class="diag-footer-label">—</span>
-                    </div>
-                </div>
-
             </div>
+
+            <!-- ════════════════════════════════════════════════════════════
+                 AI MODAL
+                 ════════════════════════════════════════════════════════════ -->
+            <div id="ai-modal" class="shell-modal" style="display:none;">
+                <div class="shell-panel shell-panel-narrow">
+                    <div class="shell-topbar">
+                        <span class="shell-title">AI LEARNING</span>
+                        <button class="btn btn-sm shell-done-btn" id="ai-modal-close">DONE</button>
+                    </div>
+                    <div class="shell-body-scroll" style="flex:1;overflow-y:auto;padding:1.25rem;">
+                        <section class="dashboard-section">
+                            <h2 class="dashboard-section-title">DATASET STATUS</h2>
+                            <div id="ai-status-panel" style="margin-bottom:12px;">
+                                <div class="ai-row"><span class="ai-label">Dataset</span> <span id="ai-dataset-info" class="ai-val">—</span></div>
+                                <div class="ai-row"><span class="ai-label">Auto-train</span> <span id="ai-autotrain-status" class="ai-val">—</span></div>
+                                <div class="ai-row"><span class="ai-label">Last trained</span> <span id="ai-last-trained" class="ai-val">—</span></div>
+                                <div class="ai-row"><span class="ai-label">Careers</span> <span id="ai-total-careers" class="ai-val">—</span></div>
+                                <div class="ai-row"><span class="ai-label">Win rate</span> <span id="ai-win-rate" class="ai-val">—</span></div>
+                            </div>
+                            <div style="display:flex;gap:8px;margin-bottom:4px;">
+                                <button class="btn btn-sm" id="ai-train-now-btn">TRAIN NOW</button>
+                                <label style="display:flex;align-items:center;gap:6px;font-size:12px;">
+                                    <input type="checkbox" id="ai-autotrain-toggle"> AUTO-TRAIN
+                                </label>
+                            </div>
+                        </section>
+                        <section class="dashboard-section">
+                            <h2 class="dashboard-section-title">POST-RUN TIPS</h2>
+                            <div id="ai-tips-panel" style="font-size:12px;color:var(--text-muted);">Run a few careers to unlock tips.</div>
+                        </section>
+                        <section class="dashboard-section">
+                            <h2 class="dashboard-section-title">RACE PROGRAM SCORES</h2>
+                            <div id="ai-programs-table"></div>
+                        </section>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ════════════════════════════════════════════════════════════
+                 RACE MANUAL SCHEDULE MODAL
+                 ════════════════════════════════════════════════════════════ -->
+            <div id="race-manual-modal" class="shell-modal" style="display:none;">
+                <div class="shell-panel shell-panel-race">
+                    <div class="shell-topbar">
+                        <span class="shell-title">RACE SCHEDULE</span>
+                        <button class="btn btn-sm shell-done-btn" id="race-manual-modal-close">DONE</button>
+                    </div>
+                    <div class="shell-body-scroll" style="flex:1;overflow-y:auto;padding:1.25rem;">
+                        <div id="race-slot-popup-overlay" class="race-slot-popup-overlay" style="display: none;">
+                            <div class="race-slot-popup">
+                                <div class="race-slot-popup-header">
+                                    <div id="race-slot-popup-title" class="race-slot-popup-title">Select Race</div>
+                                    <button id="race-slot-popup-close" class="race-slot-popup-close">&times;</button>
+                                </div>
+                                <div id="race-slot-popup-body" class="race-slot-popup-body"></div>
+                            </div>
+                        </div>
+                        <div class="race-options-content" id="race-options-content"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ════════════════════════════════════════════════════════════
+                 STATS MODAL
+                 ════════════════════════════════════════════════════════════ -->
+            <div id="stats-modal" class="shell-modal" style="display:none;">
+                <div class="shell-panel shell-panel-narrow">
+                    <div class="shell-topbar">
+                        <span class="shell-title" id="stats-modal-title">CAREER HISTORY</span>
+                        <button class="btn btn-sm shell-done-btn" id="stats-modal-close">DONE</button>
+                    </div>
+                    <div class="shell-body-scroll" style="flex:1;overflow-y:auto;padding:1.25rem;">
+                        <section class="dashboard-section">
+                            <div id="fan-stats-panel"></div>
+                        </section>
+                    </div>
+                </div>
+            </div>
+
+        </div>
         </main>
         <div id="career-modal" class="modal-backdrop">
             <div class="modal-panel">
@@ -393,53 +501,20 @@
             </div>
         </div>
 
-        <div id="skill-modal" class="skill-editor-modal">
-            <div class="skill-editor-topbar">
-                <div class="skill-editor-title">SKILL CONFIGURATION</div>
-                <button id="skill-modal-close" class="btn btn-sm skill-editor-action">DONE</button>
-            </div>
-
-            <div class="skill-editor-body">
-                <div class="skill-editor-panel skill-editor-panel-left">
-                    <div class="skill-editor-panel-head">
-                        <div class="skill-editor-section-title">TIERS & BLACKLIST</div>
-                        <button id="skill-add-tier-btn" class="btn btn-sm skill-editor-action">+ TIER</button>
-                    </div>
-
-                    <div class="skill-editor-scroll skill-editor-left-scroll">
-                        <div id="skill-tiers-container" class="skill-tier-stack"></div>
-
-                        <div class="skill-blacklist-header">
-                            <div class="skill-editor-section-title danger">BLACKLIST</div>
-                            <button id="skill-clear-blacklist-btn" class="btn btn-sm btn-danger-soft skill-editor-action">CLEAR</button>
-                        </div>
-                        <div id="skill-blacklist-container" class="skill-blacklist-zone"></div>
-
-                        <div class="skill-blacklist-header" style="margin-top:0.75rem;">
-                            <div class="skill-editor-section-title" style="color:#f59e0b;">MANDATORY</div>
-                            <button id="skill-clear-mandatory-btn" class="btn btn-sm skill-editor-action" style="border-color:#f59e0b44;color:#f59e0b;">CLEAR</button>
-                        </div>
-                        <div style="font-size:0.7rem;color:var(--text-secondary,#aaa);padding:0.2rem 0.1rem 0.4rem;line-height:1.4;">Always bought immediately, regardless of SP threshold or tier settings.</div>
-                        <div id="skill-mandatory-container" class="skill-blacklist-zone"></div>
-                    </div>
-                </div>
-
-                <div class="skill-editor-panel skill-editor-panel-right">
-                    <div class="skill-editor-panel-head stack">
-                        <div class="skill-editor-controls">
-                            <input type="text" id="skill-search" class="form-input skill-editor-search" placeholder="Search skills...">
-                            <button id="skill-select-all-btn" class="btn btn-sm skill-editor-action">ADD ALL VISIBLE</button>
-                            <button id="skill-blacklist-all-btn" class="btn btn-sm btn-danger-soft skill-editor-action">BLACKLIST ALL VISIBLE</button>
-                            <button id="skill-deselect-all-btn" class="btn btn-sm btn-danger-soft skill-editor-action">REMOVE ALL VISIBLE</button>
-                        </div>
-                        <div id="skill-filters" class="skill-filter-row"></div>
-                    </div>
-
-                    <div id="skill-list" class="skill-editor-scroll skill-list-grid"></div>
-                </div>
-            </div>
+    </div>
+    <!-- Showtime difficulty popup (floats over UI, anchored near the button) -->
+    <div id="showtime-popup" style="display:none;">
+        <div class="showtime-popup-title">SHOWTIME DIFFICULTY</div>
+        <div class="showtime-popup-btns">
+            <button class="btn btn-sm showtime-diff-btn" data-diff="1" type="button">LV 1</button>
+            <button class="btn btn-sm showtime-diff-btn" data-diff="2" type="button">LV 2</button>
+            <button class="btn btn-sm showtime-diff-btn" data-diff="3" type="button">LV 3</button>
+            <button class="btn btn-sm showtime-diff-btn" data-diff="4" type="button">LV 4</button>
+            <button class="btn btn-sm showtime-diff-btn is-active" data-diff="5" type="button">LV 5</button>
         </div>
     </div>
-    <script src="app.js?v=16"></script>
+
+    <script src="app.js?v=23"></script>
 </body>
 </html>
+                                                                                                                                                                                                                                                                                                                                                                                        

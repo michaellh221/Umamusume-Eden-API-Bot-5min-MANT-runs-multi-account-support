@@ -320,8 +320,14 @@ def check_deps():
 
     node_path = shutil.which('node')
 
+    print("=" * 60)
+    print("PYTHON:", sys.executable)
+    print("NODE:", node_path)
+    print("PATH:", os.environ.get("PATH", ""))
+    print("=" * 60)
+
     if not node_path:
-        raise Exception('node missing — install Node.js and ensure it is on PATH')
+        raise Exception('node missing')
 
     if not os.path.exists(os.path.join(DIR, 'node_modules')):
         subprocess.run(['npm', 'install', '--silent'], check=True, cwd=DIR)
@@ -675,10 +681,22 @@ class UmaClient:
                 self.regen_sid()
             raise Exception(f'709 on {ep}')
         if rc != 1:
-            if rc == 205 and retry_205 > 0:
-                print(f"205 on {ep}, retrying... ({retry_205} left)")
-                dna_sleep(0.14, 0.19, 0.166, 0.0083)
-                return self.call(ep, args, retry_208=retry_208, retry_205=retry_205 - 1)
+            # 205 = duplicate request.  Two categories:
+            #   _no_retry_205_eps  — purchase endpoints: return as-is (server already processed).
+            #   _raise_on_205_eps  — clock continue: raise so the outer loop aborts cleanly.
+            # All other endpoints retry up to retry_205 times.
+            _no_retry_205_eps = {"single_mode_free/gain_skills", "single_mode_free/multi_item_exchange", "single_mode_free/multi_item_use"}
+            _raise_on_205_eps  = {"single_mode_free/continue"}
+            if rc == 205:
+                if ep in _no_retry_205_eps:
+                    print(f"205 on {ep} (purchase endpoint) — not retrying to avoid duplicate buy")
+                    return res
+                if ep in _raise_on_205_eps:
+                    raise RuntimeError(f"API error 205 (duplicate) on {ep} — aborting clock retry")
+                if retry_205 > 0:
+                    print(f"205 on {ep}, retrying... ({retry_205} left)")
+                    dna_sleep(0.14, 0.19, 0.166, 0.0083)
+                    return self.call(ep, args, retry_208=retry_208, retry_205=retry_205 - 1)
 
             if rc == 208 and retry_208 > 0:
                 if ep in {"single_mode_free/gain_skills", "single_mode_free/multi_item_exchange", "single_mode_free/multi_item_use"}:
@@ -781,6 +799,43 @@ class UmaClient:
                     dna_sleep(4.15, 4.15)
                     continue
                 raise
+
+    # TP recovery item ID used by the game's item/use_recovery_item endpoint.
+    TP_POTION_ITEM_ID = 32
+
+    def tp_potion_count(self, item_id=None):
+        """Return how many TP recovery potions (item 32) are in the cache."""
+        item_id = int(item_id or self.TP_POTION_ITEM_ID)
+        return int(self.item_map.get(item_id, 0) or 0)
+
+    def use_recovery_item(self, item_num=1, item_id=None):
+        """Use a TP recovery item via item/use_recovery_item.
+
+        Payload shape matches the known-good Umabot format:
+        {item_id, client_own_num, item_num}.
+        """
+        item_id = int(item_id or self.TP_POTION_ITEM_ID)
+        item_num = max(1, int(item_num or 1))
+        own = self.tp_potion_count(item_id)
+        result = self.call("item/use_recovery_item", {
+            "item_id": item_id,
+            "client_own_num": own,
+            "item_num": item_num,
+        })
+        data = result.get("data", {}) if isinstance(result, dict) else {}
+        tp = data.get("tp_info", {})
+        if tp:
+            self.tp_info = tp
+        coin = data.get("coin_info", {})
+        if coin:
+            self.coin_info = coin
+        item_list = (data.get("user_item") or data.get("user_item_array")
+                     or data.get("item_list"))
+        if isinstance(item_list, list):
+            self._refresh_item_map(item_list)
+        else:
+            self.item_map[item_id] = max(0, own - item_num)
+        return tp
 
     def use_tp_item(self, item_id, use_num=1):
         """Use an item outside of training to restore TP (Trainer Points).
@@ -954,14 +1009,11 @@ class UmaClient:
             'is_play_training_challenge': False
         }
 
-    def use_recovery_item(self, start_chara, tp_info, current_money, use_tp,
-                          succession_rank_point, item_id=None, use_num=None):
-        """Use a recovery item (Vita 20/40/65) before starting a career.
-
-        The real client bundles start_chara inside item/use_recovery_item so the
-        server registers the career intent at the same time as the item use.
-        After this call, single_mode_free/start must be called WITHOUT start_chara.
-        """
+    def _career_use_recovery_item(self, start_chara, tp_info, current_money, use_tp,
+                                  succession_rank_point, item_id=None, use_num=None):
+        """Combined 'use recovery item + register career intent' call (legacy path).
+        Kept for reference; the standalone use_recovery_item() above is used for
+        pre-career TP top-ups without triggering a career start."""
         payload = {
             'start_chara': start_chara,
             'tp_info': tp_info,
@@ -982,7 +1034,7 @@ class UmaClient:
                      boost_story_event_id=0, skip_start_chara=False):
         """Call single_mode_free/start.
 
-        skip_start_chara=True: called after use_recovery_item already sent start_chara —
+        skip_start_chara=True: called after _career_use_recovery_item already sent start_chara —
         the server has the career intent registered, so we just send an empty trigger.
         skip_start_chara=False (default): normal path, full start_chara included.
         """
@@ -1075,7 +1127,7 @@ class UmaClient:
     def race_end(self, current_turn):
         return self.call('single_mode_free/race_end', {
             'current_turn': current_turn
-        })
+             })
 
     def race_out(self, current_turn):
         return self.call('single_mode_free/race_out', {

@@ -50,6 +50,10 @@ const state = {
     scenarioType: "Mant",
     burnClocks: false,
     displayedClocksUsed: 0,
+    showtimeMode: false,
+    showtimeDifficulty: 5,
+    showtimeEventId: 0,
+    showtimeDifficultyId: 0,  // real difficulty_id fetched from server (e.g. 1003)
     devEnabled: true,
     careersLimit: 0,      // 0 = infinite; stop loop after N completions this session
     sessionCareersStart: 0, // careers_count at session start (for delta tracking)
@@ -66,6 +70,10 @@ const els = {
     turnDelayMax: document.getElementById('turn-delay-max'),
     temptFateBtn: document.getElementById('tempt-fate-btn'),
     burnClocksBtn: document.getElementById('burn-clocks-btn'),
+    showtimeBtn: document.getElementById('showtime-btn'),
+    showtimePopup: document.getElementById('showtime-popup'),
+    showtimeDiffBtns: null,   // populated after DOM ready
+    showtimeEventIdEl: document.getElementById('showtime-event-id'),
     devBtn: document.getElementById('dev-career-btn'),
     loginView: document.getElementById('login-view'),
     dashboardView: document.getElementById('dashboard-view'),
@@ -73,15 +81,10 @@ const els = {
     standardFields: document.getElementById('standard-fields'),
     faFields: document.getElementById('2fa-fields'),
     umaGrid: document.getElementById('uma-grid'),
-    cardGrid: document.getElementById('card-grid'),
-    cardGridWrapper: document.getElementById('card-grid-wrapper'),
-    cardsToggle: document.getElementById('cards-toggle'),
-    cardsChevron: document.getElementById('cards-chevron'),
     parentGrid: document.getElementById('parent-grid'),
     friendGrid: document.getElementById('friend-grid'),
     deckList: document.getElementById('deck-list'),
     umaCount: document.getElementById('uma-count'),
-    cardCount: document.getElementById('card-count'),
     parentCount: document.getElementById('parent-count'),
     followParentGrid: document.getElementById('follow-parent-grid'),
     followParentCount: document.getElementById('follow-parent-count'),
@@ -115,20 +118,12 @@ const els = {
     presetDelBtn: document.getElementById('preset-del-btn'),
     presetRunningStyle: document.getElementById('preset-running-style'),
     presetTargetDistance: document.getElementById('preset-target-distance'),
-    presetSkillThreshold: document.getElementById('preset-skill-threshold'),
-    presetAutoBuyOverride: document.getElementById('preset-auto-buy-override'),
+    presetSkillOptimizerMode: document.getElementById('preset-skill-optimizer-mode'),
     presetEditSkillsBtn: document.getElementById('preset-edit-skills-btn'),
-    skillModal: document.getElementById('skill-modal'),
-    skillSearch: document.getElementById('skill-search'),
-    skillList: document.getElementById('skill-list'),
-    skillTiersContainer: document.getElementById('skill-tiers-container'),
-    skillBlacklistContainer: document.getElementById('skill-blacklist-container'),
-    skillMandatoryContainer: document.getElementById('skill-mandatory-container'),
-    skillAddTierBtn: document.getElementById('skill-add-tier-btn'),
-    skillModalClose: document.getElementById('skill-modal-close')
 };
         const delaySettingsStorageKey = 'uma_turn_delay_settings';
         const burnClocksStorageKey = 'uma_burn_clocks';
+        const showtimeStorageKey = 'uma_showtime';
         // ── Dev / loop controls ────────────────────────────────────────────────
         function syncDevControls() {
             if (!els.devBtn) return;
@@ -190,6 +185,7 @@ const els = {
         });
 
         syncDevControls();
+        initShowtimeControls();
 
         function setLoadingScreen(visible) {
             if (!els.loadingScreen) return;
@@ -215,134 +211,10 @@ const els = {
             const navbarHeight = navbar ? navbar.getBoundingClientRect().height : 0;
             const availableHeight = Math.max(360, Math.floor(window.innerHeight - navbarHeight));
             document.documentElement.style.setProperty('--dashboard-height', `${availableHeight}px`);
-            syncDashboardCollapseState(false);
         }
         window.addEventListener('resize', syncDashboardHeight);
         window.addEventListener('orientationchange', syncDashboardHeight);
         syncDashboardHeight();
-        const panelToggleSyncers = [];
-        const dashboardMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
-        let dashboardLayoutAnimation = 0;
-        const dashboardAnimationMs = 420;
-        function isCompactDashboard() {
-            return window.matchMedia('(max-width: 850px)').matches;
-        }
-        function getPanelLayoutTarget(setupCollapsed, contentCollapsed) {
-            const compact = isCompactDashboard();
-            const gutter = document.querySelector('.split-gutter-controls');
-            const dashboardRect = els.dashboardView.getBoundingClientRect();
-            const gutterRect = gutter.getBoundingClientRect();
-            const gutterSize = compact ? gutterRect.height : gutterRect.width;
-            const available = Math.max(0, (compact ? dashboardRect.height : dashboardRect.width) - gutterSize);
-            if (compact) {
-                const setupSize = setupCollapsed ? 0 : contentCollapsed ? available : available * 0.34;
-                const contentSize = contentCollapsed ? 0 : setupCollapsed ? available : Math.max(340, available - setupSize);
-                return { compact, gutterSize, setupSize, contentSize };
-            }
-            const setupSize = setupCollapsed ? 0 : contentCollapsed ? available : Math.min(available * 0.62, available - 340);
-            const contentSize = contentCollapsed ? 0 : setupCollapsed ? available : Math.max(340, available - setupSize);
-            return { compact, gutterSize, setupSize, contentSize };
-        }
-        function setDashboardTemplate(layout, setupSize, contentSize) {
-            const safeSetup = Math.max(0, setupSize);
-            const safeContent = Math.max(0, contentSize);
-            if (layout.compact) {
-                els.dashboardView.style.gridTemplateColumns = '';
-                els.dashboardView.style.gridTemplateRows = `${safeSetup}px ${layout.gutterSize}px ${safeContent}px`;
-            } else {
-                els.dashboardView.style.gridTemplateRows = '';
-                els.dashboardView.style.gridTemplateColumns = `${safeSetup}px ${layout.gutterSize}px ${safeContent}px`;
-            }
-        }
-        function easeDashboardLayout(t) {
-            return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
-        }
-        function syncDashboardCollapseState(animate = false) {
-            const setupPanel = document.getElementById('setup-panel');
-            const contentPanel = document.getElementById('content-panel');
-            if (!setupPanel || !contentPanel || !els.dashboardView) return;
-            if (setupPanel.classList.contains('collapsed') && contentPanel.classList.contains('collapsed')) {
-                contentPanel.classList.remove('collapsed');
-            }
-            const setupCollapsed = setupPanel.classList.contains('collapsed');
-            const contentCollapsed = contentPanel.classList.contains('collapsed');
-            els.dashboardView.classList.toggle('setup-collapsed', setupCollapsed);
-            els.dashboardView.classList.toggle('content-collapsed', contentCollapsed);
-            if (!els.dashboardView.classList.contains('active')) return;
-            const layout = getPanelLayoutTarget(setupCollapsed, contentCollapsed);
-            if (dashboardLayoutAnimation) {
-                cancelAnimationFrame(dashboardLayoutAnimation);
-                dashboardLayoutAnimation = 0;
-            }
-            els.dashboardView.style.transition = 'none';
-            if (!animate || dashboardMotion.matches) {
-                setDashboardTemplate(layout, layout.setupSize, layout.contentSize);
-                return;
-            }
-            const compact = layout.compact;
-            const setupRect = setupPanel.getBoundingClientRect();
-            const contentRect = contentPanel.getBoundingClientRect();
-            const startSetup = compact ? setupRect.height : setupRect.width;
-            const startContent = compact ? contentRect.height : contentRect.width;
-            const targetSetup = layout.setupSize;
-            const targetContent = layout.contentSize;
-            if (Math.abs(startSetup - targetSetup) < 0.5 && Math.abs(startContent - targetContent) < 0.5) {
-                setDashboardTemplate(layout, targetSetup, targetContent);
-                return;
-            }
-            const startedAt = performance.now();
-            const step = now => {
-                const t = Math.min(1, (now - startedAt) / dashboardAnimationMs);
-                const eased = easeDashboardLayout(t);
-                setDashboardTemplate(
-                    layout,
-                    startSetup + (targetSetup - startSetup) * eased,
-                    startContent + (targetContent - startContent) * eased
-                );
-                if (t < 1) {
-                    dashboardLayoutAnimation = requestAnimationFrame(step);
-                } else {
-                    setDashboardTemplate(layout, targetSetup, targetContent);
-                    dashboardLayoutAnimation = 0;
-                }
-            };
-            setDashboardTemplate(layout, startSetup, startContent);
-            dashboardLayoutAnimation = requestAnimationFrame(step);
-        }
-        function syncPanelToggleButtons() {
-            panelToggleSyncers.forEach(sync => sync());
-        }
-        function makePanelToggle(panelId, btnId, collapseIcon, expandIcon) {
-            const panel = document.getElementById(panelId);
-            const btn = document.getElementById(btnId);
-            const label = (btn.dataset.panelLabel || 'panel').toLowerCase();
-            const renderChevrons = icon => `
-                <span class="panel-collapse-btn-chevron-stack" aria-hidden="true">
-                    <span>${icon}</span>
-                    <span>${icon}</span>
-                    <span>${icon}</span>
-                </span>
-            `;
-            const syncButton = () => {
-                const isCollapsed = panel.classList.contains('collapsed');
-                const icon = isCollapsed ? expandIcon : collapseIcon;
-                btn.classList.toggle('is-collapsed', isCollapsed);
-                btn.innerHTML = renderChevrons(icon);
-                btn.setAttribute('title', `${isCollapsed ? 'Expand' : 'Collapse'} ${label}`);
-                btn.setAttribute('aria-label', `${isCollapsed ? 'Expand' : 'Collapse'} ${label}`);
-                btn.setAttribute('aria-expanded', String(!isCollapsed));
-            };
-            panelToggleSyncers.push(syncButton);
-            btn.addEventListener('click', () => {
-                panel.classList.toggle('collapsed');
-                syncDashboardCollapseState(true);
-                syncPanelToggleButtons();
-            });
-            syncDashboardCollapseState(false);
-            syncButton();
-        }
-        makePanelToggle('setup-panel',   'setup-collapse-btn',   '&lt;', '&gt;');
-        makePanelToggle('content-panel', 'content-collapse-btn', '&gt;', '&lt;');
         function makeSectionToggle(toggleId, chevronId, bodyId, startExpanded) {
             const toggle  = document.getElementById(toggleId);
             const chevron = document.getElementById(chevronId);
@@ -380,7 +252,6 @@ const els = {
         makeSectionToggle('friends-toggle',  'friends-chevron',  'friends-body',  true);
         makeSectionToggle('trainees-toggle', 'trainees-chevron', 'trainees-body', true);
         makeSectionToggle('parents-toggle',  'parents-chevron',  'parents-body',  true);
-        makeSectionToggle('cards-toggle',    'cards-chevron',    'card-grid-wrapper', true);
         makeSectionToggle('follow-parents-toggle', 'follow-parents-chevron', 'follow-parents-body', false);
 
         // ── Tab switching ──
@@ -395,39 +266,45 @@ const els = {
             try { localStorage.setItem(TAB_STORAGE_KEY, tabId); } catch(e) {}
         }
         document.querySelectorAll('.panel-tab').forEach(btn => {
-            btn.addEventListener('click', () => {
-                switchTab(btn.dataset.tab);
-                if (btn.dataset.tab === 'tab-stats') fetchAndRenderFanStats();
-            });
+            btn.addEventListener('click', () => switchTab(btn.dataset.tab));
         });
+        // Restore saved tab (only if it still exists in the setup modal)
         const savedTab = (() => { try { return localStorage.getItem(TAB_STORAGE_KEY); } catch(e) { return null; } })();
-        if (savedTab && document.getElementById(savedTab)) switchTab(savedTab);
+        const validTabs = ['tab-preset', 'tab-deck', 'tab-parents', 'tab-skills'];
+        if (savedTab && validTabs.includes(savedTab) && document.getElementById(savedTab)) switchTab(savedTab);
 
         // ══════════════════════════════════════════════════════════════
         // MODE SWITCHING (SETUP / DIAGNOSTICS)
         // ══════════════════════════════════════════════════════════════
-        const MODE_KEY = 'uma_active_mode';
         let _sessionStartTime = Date.now();
         let _diagMetricsTimer = 0;
         let _diagRunnerWasRunning = false; // tracks previous runner state for finish-detection
 
-        // ── Mode switching (SETUP ↔ DIAGNOSTICS) ──────────────────────────────
-        function switchMode(mode) {
-            document.querySelectorAll('.mode-btn').forEach(btn => {
-                btn.classList.toggle('is-active', btn.dataset.mode === mode);
-            });
-            document.querySelectorAll('.mode-pane').forEach(pane => {
-                pane.classList.toggle('is-active', pane.id === 'mode-' + mode);
-            });
-            try { localStorage.setItem(MODE_KEY, mode); } catch(e) {}
-            if (mode === 'diagnostics') {
-                refreshDiagnostics();
-                startDiagMetricsTimer();
-            } else {
-                stopDiagMetricsTimer();
-            }
+        // ── Shell modal helpers ──────────────────────────────────────────────
+        function openModal(id) {
+            const el = document.getElementById(id);
+            if (el) el.style.display = 'flex';
+        }
+        function closeModal(id) {
+            const el = document.getElementById(id);
+            if (el) el.style.display = 'none';
         }
 
+        // Nav buttons → modals
+        document.getElementById('nav-setup-btn')?.addEventListener('click', () => openModal('setup-modal'));
+        document.getElementById('nav-ai-btn')?.addEventListener('click', () => { openModal('ai-modal'); fetchAiStatus(); });
+        document.getElementById('nav-stats-btn')?.addEventListener('click', () => { openModal('stats-modal'); fetchAndRenderFanStats(); });
+        document.getElementById('setup-modal-close')?.addEventListener('click', () => closeModal('setup-modal'));
+        document.getElementById('ai-modal-close')?.addEventListener('click', () => closeModal('ai-modal'));
+        document.getElementById('stats-modal-close')?.addEventListener('click', () => closeModal('stats-modal'));
+        document.getElementById('race-manual-modal-close')?.addEventListener('click', () => closeModal('race-manual-modal'));
+        document.getElementById('race-manual-open-btn')?.addEventListener('click', () => { openModal('race-manual-modal'); renderRaces(); });
+        // Click backdrop to close
+        document.querySelectorAll('.shell-modal').forEach(modal => {
+            modal.addEventListener('click', e => { if (e.target === modal) modal.style.display = 'none'; });
+        });
+
+        // ── Diagnostics timers (always running after login) ─────────────────
         function startDiagMetricsTimer() {
             if (_diagMetricsTimer) return;
             _diagMetricsTimer = setInterval(updateDiagMetrics, 5000);
@@ -435,15 +312,6 @@ const els = {
         function stopDiagMetricsTimer() {
             if (_diagMetricsTimer) { clearInterval(_diagMetricsTimer); _diagMetricsTimer = 0; }
         }
-
-        document.querySelectorAll('.mode-btn').forEach(btn => {
-            btn.addEventListener('click', () => switchMode(btn.dataset.mode));
-        });
-        // Restore last mode
-        try {
-            const savedMode = localStorage.getItem(MODE_KEY);
-            if (savedMode) switchMode(savedMode);
-        } catch(e) {}
 
         // ── Diagnostics rendering ──────────────────────────────────────
         const MOOD_LABELS = { 1: 'BAD', 2: 'NORMAL', 3: 'GOOD', 4: 'GREAT', 5: 'SUPER' };
@@ -474,6 +342,10 @@ const els = {
 
             if (!career || !career.active) {
                 body.innerHTML = '<div class="diag-career-empty">No active career</div>';
+                const pp = document.getElementById('diag-portraits-panel');
+                if (pp) pp.style.display = 'none';
+                const invPanelEmpty = document.getElementById('diag-inventory-panel');
+                if (invPanelEmpty) invPanelEmpty.innerHTML = '<span style="opacity:0.3;font-size:0.7rem;">No active career</span>';
                 return;
             }
 
@@ -492,24 +364,35 @@ const els = {
             const cardId = career.card_id || '';
             const charaName = career.name || 'Unknown';
 
-            // ── Setup portraits (deck / friend / parents) ────────────────────
+            // ── Full-width portrait panel (deck on top, parents below) ─────────
             const sel = selection || {};
-            const deckImgs = (sel.deck && sel.deck.cards || [])
-                .map(c => `<img class="diag-setup-thumb" src="/api/images/${escapeAttr(String(c.id||'10001'))}.png" onerror="this.style.display='none'" title="${escapeAttr(c.name||'')}">`)
-                .join('');
-            const friendImg = sel.friend
-                ? `<img class="diag-setup-thumb" src="/api/images/${escapeAttr(String(sel.friend.support_card_id||'10001'))}.png" onerror="this.style.display='none'" title="${escapeAttr(sel.friend.support_name||'Friend')}">`
-                : '';
-            const parentImgs = [
-                ...(sel.veterans || []).map(v => `<img class="diag-setup-thumb diag-setup-parent" src="/api/images/${escapeAttr(String(v.card_id||'100101'))}.png" onerror="this.style.display='none'" title="${escapeAttr(v.name||'Parent')}">`),
-                sel.guestParent ? `<img class="diag-setup-thumb diag-setup-parent diag-setup-guest" src="/api/images/${escapeAttr(String(sel.guestParent.card_id||'100101'))}.png" onerror="this.style.display='none'" title="${escapeAttr(sel.guestParent.name||'Guest')}">` : ''
-            ].join('');
-            const setupHtml = (deckImgs || friendImg || parentImgs) ? `
-                <div class="diag-setup-row">
-                    <div class="diag-setup-group">${deckImgs}</div>
-                    ${friendImg ? `<div class="diag-setup-sep"></div><div class="diag-setup-group">${friendImg}</div>` : ''}
-                    ${parentImgs ? `<div class="diag-setup-sep"></div><div class="diag-setup-group">${parentImgs}</div>` : ''}
-                </div>` : '';
+            const portraitPanel = document.getElementById('diag-portraits-panel');
+            if (portraitPanel) {
+                const deckPortraits = [
+                    ...(sel.deck && sel.deck.cards || []).map(c =>
+                        `<img class="diag-portrait-card" src="/api/images/${escapeAttr(String(c.id||'10001'))}.png" onerror="this.style.display='none'" title="${escapeAttr(c.name||'')}">`),
+                    sel.friend
+                        ? `<img class="diag-portrait-card" src="/api/images/${escapeAttr(String(sel.friend.support_card_id||'10001'))}.png" onerror="this.style.display='none'" title="${escapeAttr(sel.friend.support_name||'Friend')}">`
+                        : ''
+                ].filter(Boolean).join('');
+                const parentPortraits = [
+                    ...(sel.veterans || []).map(v =>
+                        `<img class="diag-portrait-parent-card" src="/api/images/${escapeAttr(String(v.card_id||'100101'))}.png" onerror="this.style.display='none'" title="${escapeAttr(v.name||'Parent')}">`),
+                    sel.guestParent
+                        ? `<img class="diag-portrait-parent-card diag-portrait-guest" src="/api/images/${escapeAttr(String(sel.guestParent.card_id||'100101'))}.png" onerror="this.style.display='none'" title="${escapeAttr(sel.guestParent.name||'Guest')}">`
+                        : ''
+                ].filter(Boolean).join('');
+                if (deckPortraits || parentPortraits) {
+                    portraitPanel.innerHTML =
+                        (deckPortraits ? `<div class="diag-portraits-deck-row">${deckPortraits}</div>` : '') +
+                        (parentPortraits ? `<div class="diag-portraits-parent-row">${parentPortraits}</div>` : '');
+                    portraitPanel.style.display = '';
+                } else {
+                    portraitPanel.innerHTML = '';
+                    portraitPanel.style.display = 'none';
+                }
+            }
+            const setupHtml = ''; // portraits now in full-width panel above
 
             // ── Last action debrief ──────────────────────────────────────────
             const debrief = lastRow || {};
@@ -538,6 +421,18 @@ const els = {
                 debriefLines.push(`Finished rank: ${debriefRank}`);
             }
             if (debriefItems.length) debriefLines.push(`Items: ${debriefItems.join(', ')}`);
+
+
+            // ── Inventory ───────────────────────────────────────────────────────
+            const inventory = (runner && runner.inventory) || [];
+            let inventoryHtml = '';
+            if (inventory.length) {
+                const chips = inventory.map(item => {
+                    const used = item.failed_scope ? ' style="opacity:0.45"' : '';
+                    return `<span class="diag-inv-chip"${used} title="${escapeAttr(item.name)}">${escapeHtml(item.name)} <b>${item.current_num}</b></span>`;
+                }).join('');
+                inventoryHtml = `<div class="diag-inv-row">${chips}</div>`;
+            }
 
             const traceTable = (debrief.turn != null) ? `
                 <div class="diag-debrief-box">
@@ -578,6 +473,19 @@ const els = {
                 ${traceTable}
             `;
 
+            // ── Inventory panel (right column) ────────────────────────────────
+            const invPanel = document.getElementById('diag-inventory-panel');
+            if (invPanel) {
+                if (inventory.length) {
+                    invPanel.innerHTML = inventory.map(item => {
+                        const faded = item.failed_scope ? ' style="opacity:0.4"' : '';
+                        return `<span class="diag-inv-chip"${faded} title="${escapeAttr(item.name)}">${escapeHtml(item.name)} <b>${item.current_num}</b></span>`;
+                    }).join('');
+                } else {
+                    invPanel.innerHTML = '<span style="opacity:0.3;font-size:0.7rem;">No items</span>';
+                }
+            }
+
             // Footer labels
             const footerLabel = document.getElementById('diag-footer-label');
             if (footerLabel) footerLabel.textContent = `TURN ${turn} / RACE ${hist.filter(r => r.action === 'race').length}`;
@@ -614,6 +522,67 @@ const els = {
                 <tbody>${body}</tbody>
             </table>`;
             logEl.scrollTop = 0;
+        }
+
+        function renderSkillOptimizer(runner) {
+            const body   = document.getElementById('diag-skill-opt-body');
+            const spBadge = document.getElementById('diag-skill-sp-badge');
+            if (!body) return;
+
+            const opt = (runner && runner.skill_optimizer) || {};
+            const selected   = opt.selected   || [];
+            const candidates = opt.candidates  || [];
+            const result     = opt.result      || {};
+
+            // SP comes from the most recent action_history row
+            const hist = (runner && runner.action_history) || [];
+            const sp = hist.length ? (hist[hist.length - 1].stats || {}).skill_point : null;
+            if (spBadge) spBadge.textContent = sp != null ? `${sp} SP` : '— SP';
+
+            if (!runner || !runner.running && !selected.length && !result.result) {
+                body.innerHTML = '<div class="diag-career-empty">No active career</div>';
+                return;
+            }
+
+            const totalCost = selected.reduce((s, c) => s + (c.cost || 0), 0);
+            const totalScore = selected.reduce((s, c) => s + (c.score || 0), 0);
+
+            let html = '';
+
+            // Summary line
+            if (selected.length) {
+                html += `<div class="diag-skill-opt-summary">
+                    <span>${selected.length} skill${selected.length !== 1 ? 's' : ''} queued</span>
+                    <span>${totalCost} SP cost · ${totalScore} pts</span>
+                </div>`;
+            }
+
+            // Selected skills (what knapsack picked)
+            if (selected.length) {
+                for (const c of selected) {
+                    const rarity = c.mandatory ? 'mand' : (c.tip_rarity >= 2 ? 'gold' : 'white');
+                    const label  = c.mandatory ? 'REQ' : (c.tip_rarity >= 2 ? 'GOLD' : 'WHT');
+                    html += `<div class="diag-skill-opt-row">
+                        <span class="diag-skill-rarity ${rarity}">${label}</span>
+                        <span class="diag-skill-opt-name" title="${escapeAttr(c.name || '')}">${escapeHtml(c.name || '—')}</span>
+                        <span class="diag-skill-opt-cost">${c.cost || 0} SP</span>
+                    </div>`;
+                }
+            } else if (runner && runner.running) {
+                // Running but nothing selected yet — show candidate count as context
+                html += `<div class="diag-career-empty" style="opacity:0.5">${candidates.length} tips · accumulating SP…</div>`;
+            }
+
+            // Purchase result (shown after finish trigger fires)
+            if (result.result === 'ok') {
+                html += `<div class="diag-skill-opt-result ok">✓ ${result.count} skill${result.count !== 1 ? 's' : ''} purchased</div>`;
+            } else if (result.result === 'failed') {
+                html += `<div class="diag-skill-opt-result failed">✗ purchase failed: ${escapeHtml(result.error || '')}</div>`;
+            } else if (result.skip && result.skip !== 'deferred_to_end') {
+                html += `<div class="diag-skill-opt-result skip">${escapeHtml(result.skip)}</div>`;
+            }
+
+            body.innerHTML = html || '<div class="diag-career-empty" style="opacity:0.5">Waiting for turn data…</div>';
         }
 
         let _circleStatsFetched = false;
@@ -663,8 +632,10 @@ const els = {
                 // always reflects the current run, even mid-loop between careers.
                 const account = data.account || state.account;
                 if (data.account) { state.account = data.account; renderAccountStrip(data.account); }
+                if (data.selection) state.selection = data.selection;
                 renderDiagCareer(runner, account, data.selection);
                 renderDiagLog(runner);
+                renderSkillOptimizer(runner);
 
                 // Detect career finish: if runner just stopped, reset circle cache so
                 // the next updateDiagMetrics call re-fetches fresh club fans from the server.
@@ -683,10 +654,7 @@ const els = {
         const diagSyncBtn = document.getElementById('diag-sync-btn');
 
         if (diagResumeBtn) diagResumeBtn.addEventListener('click', () => {
-            // Switch to setup and click run
-            switchMode('setup');
-            const runBtn = document.getElementById('start-career-btn');
-            if (runBtn && !runBtn.disabled) runBtn.click();
+            startCareer();
         });
         if (diagStopBtn) diagStopBtn.addEventListener('click', async () => {
             try {
@@ -768,6 +736,17 @@ const els = {
             const res = await fetch(url, options);
             return res.json();
         }
+        window.apiJson = apiJson; // expose for top-level helpers (AI tab, solver UI)
+        window.getCurrentPreset = () => (state.presets || []).find(p => p.name === state.selectedPreset);
+        window.saveCurrentPreset = async (preset) => {
+            try {
+                await apiJson('/api/presets', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ preset }),
+                });
+            } catch (e) {}
+        };
         function setMasterDataStatus(message, stateName = '') {
             if (!els.masterDataStatus) return;
             els.masterDataStatus.textContent = message || '';
@@ -976,6 +955,8 @@ const els = {
             img.onerror = null;
             img.style.display = 'none';
         }
+        // Expose globally so inline onerror="hideBrokenImage(this)" can reach it
+        window.hideBrokenImage = hideBrokenImage;
         const loginForm = document.getElementById('login-form');
         loginForm.addEventListener('submit', async event => {
             event.preventDefault();
@@ -999,6 +980,8 @@ const els = {
                     _circleStatsFetched = false; // reset so club info re-fetches on next login
                     await renderDashboard(data, { animateIntro: true, waitForIntro: true });
                     state.isLoading = false;
+                } else if (data.needs_auth_capture) {
+                    showLoginError((data.detail || 'GAME LAUNCHING — LOG IN TO GAME ACCOUNT, THEN CLICK LOGIN AGAIN').toUpperCase());
                 } else {
                     showLoginError(data.detail || 'FAIL');
                 }
@@ -1074,20 +1057,63 @@ const els = {
         // ── Burn clocks controls ─────────────────────────────────────────────────
         function syncBurnClocksControls() {
             if (!els.burnClocksBtn) return;
-            const clocks = state.account ? Number(state.account.clocks || 0) : 0;
-            const disabled = clocks <= 11;
-
-            if (disabled) {
-                state.burnClocks = false;
-                els.burnClocksBtn.disabled = true;
-                els.burnClocksBtn.classList.remove('is-active');
-                els.burnClocksBtn.innerText = `BURN CLOCKS: LOW (${clocks})`;
-            } else {
-                els.burnClocksBtn.disabled = false;
-                els.burnClocksBtn.classList.toggle('is-active', state.burnClocks);
-                els.burnClocksBtn.innerText = `BURN CLOCKS: ${state.burnClocks ? 'ON' : 'OFF'}`;
+            els.burnClocksBtn.disabled = false;
+            els.burnClocksBtn.classList.toggle('is-active', state.burnClocks);
+            els.burnClocksBtn.innerText = `BURN CLOCKS: ${state.burnClocks ? 'ON' : 'OFF'}`;
+        }
+        // ── TP recovery mode dropdown ────────────────────────────────────────
+        const TP_RECOVERY_LABELS = {
+            potion_first: 'Items → Carrots',
+            potion_only:  'Items Only',
+            jewels_only:  'Carrots Only'
+        };
+        function normalizeTpRecoveryMode(mode) {
+            return ['potion_first', 'potion_only', 'jewels_only'].includes(mode) ? mode : 'jewels_only';
+        }
+        function tpRecoveryModeLabel(mode) {
+            return TP_RECOVERY_LABELS[normalizeTpRecoveryMode(mode)] || TP_RECOVERY_LABELS.jewels_only;
+        }
+        function setTpRecoveryModeLocal(mode, { persist = true } = {}) {
+            state.tpRecoveryMode = normalizeTpRecoveryMode(mode);
+            if (persist) localStorage.setItem('sweepy_tp_recovery_mode', state.tpRecoveryMode);
+            const select = document.getElementById('tp-recovery-mode-select');
+            if (select) select.value = state.tpRecoveryMode;
+        }
+        async function loadTpRecoveryMode() {
+            try {
+                const data = await apiJson('/api/settings/tp-recovery');
+                if (data && data.mode) setTpRecoveryModeLocal(data.mode, { persist: true });
+                const count = document.getElementById('tp-recovery-potion-count');
+                if (count && data && data.potions != null) count.textContent = formatNumber(data.potions || 0);
+            } catch(e) {
+                setTpRecoveryModeLocal(state.tpRecoveryMode, { persist: false });
             }
         }
+        async function setTpRecoveryMode(mode) {
+            const next = normalizeTpRecoveryMode(mode);
+            setTpRecoveryModeLocal(next, { persist: true });
+            try {
+                const data = await apiJson('/api/settings/tp-recovery', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mode: next })
+                });
+                if (data && data.mode) setTpRecoveryModeLocal(data.mode, { persist: true });
+            } catch(e) {
+                console.warn('Failed to save TP recovery mode', e);
+            }
+        }
+        function bindTpRecoveryControls() {
+            const select = document.getElementById('tp-recovery-mode-select');
+            if (select && !select.dataset.bound) {
+                select.value = normalizeTpRecoveryMode(state.tpRecoveryMode);
+                select.addEventListener('change', () => setTpRecoveryMode(select.value));
+                select.dataset.bound = '1';
+            }
+        }
+        if (!state.tpRecoveryMode) state.tpRecoveryMode = localStorage.getItem('sweepy_tp_recovery_mode') || 'jewels_only';
+        loadTpRecoveryMode();
+
         function setBurnClocks(value, options = {}) {
             state.burnClocks = Boolean(value);
             syncBurnClocksControls();
@@ -1097,6 +1123,125 @@ const els = {
             if (state.runner && state.runner.running) return;
             const stored = readLocalSetting(localStorage.getItem(burnClocksStorageKey));
             if (stored !== null) setBurnClocks(stored);
+        }
+
+        // ── Showtime mode controls ────────────────────────────────────────────────
+        let _showtimePopupOpen = false;
+
+        function closeShowtimePopup() {
+            if (els.showtimePopup) els.showtimePopup.style.display = 'none';
+            _showtimePopupOpen = false;
+        }
+
+        function openShowtimePopup() {
+            if (!els.showtimePopup || !els.showtimeBtn) return;
+            const rect = els.showtimeBtn.getBoundingClientRect();
+            const popup = els.showtimePopup;
+            popup.style.display = 'block';
+            // Position below the button, left-aligned; clamp to viewport
+            const popupW = popup.offsetWidth || 210;
+            let left = rect.left;
+            if (left + popupW > window.innerWidth - 8) left = window.innerWidth - popupW - 8;
+            popup.style.left = left + 'px';
+            popup.style.top  = (rect.bottom + 6) + 'px';
+            _showtimePopupOpen = true;
+        }
+
+        function syncShowtimeControls() {
+            if (!els.showtimeBtn) return;
+            els.showtimeBtn.classList.toggle('is-active', state.showtimeMode);
+            const diffLabel = state.showtimeMode ? ` LV${state.showtimeDifficulty}` : '';
+            els.showtimeBtn.innerText = `SHOWTIME: ${state.showtimeMode ? 'ON' : 'OFF'}${diffLabel}`;
+            // Highlight active difficulty button in popup
+            if (els.showtimeDiffBtns) {
+                els.showtimeDiffBtns.forEach(btn => {
+                    const v = Number(btn.dataset.diff);
+                    btn.classList.toggle('is-active', v === state.showtimeDifficulty);
+                });
+            }
+        }
+
+        async function fetchShowtimeInfo() {
+            // Fetches the real difficulty_id (e.g. 1003) for Showtime mode from load/index
+            try {
+                const r = await fetch('/api/showtime-info');
+                const d = await r.json();
+                if (d.difficulty_id) state.showtimeDifficultyId = d.difficulty_id;
+                syncShowtimeControls();
+            } catch (_) {}
+        }
+
+        function setShowtimeMode(value, options = {}) {
+            state.showtimeMode = Boolean(value);
+            if (state.showtimeMode) fetchShowtimeInfo();
+            syncShowtimeControls();
+            if (options.persist) {
+                writeLocalSetting(showtimeStorageKey, JSON.stringify({
+                    mode: state.showtimeMode,
+                    difficulty: state.showtimeDifficulty,
+                    event_id: state.showtimeEventId
+                }));
+            }
+        }
+
+        function loadStoredShowtime() {
+            try {
+                const raw = localStorage.getItem(showtimeStorageKey);
+                if (!raw) return;
+                const s = JSON.parse(raw);
+                if (s.difficulty) state.showtimeDifficulty = Number(s.difficulty);
+                if (s.event_id) state.showtimeEventId = Number(s.event_id);
+                setShowtimeMode(Boolean(s.mode));
+            } catch (_) {}
+        }
+
+        // Wire up showtime button and popup after DOM is ready
+        function initShowtimeControls() {
+            els.showtimeDiffBtns = Array.from(document.querySelectorAll('.showtime-diff-btn'));
+            els.showtimeDiffBtns.forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    state.showtimeDifficulty = Number(btn.dataset.diff);
+                    // Ensure Showtime stays ON when picking a difficulty
+                    setShowtimeMode(true, { persist: true });
+                    closeShowtimePopup();
+                });
+            });
+
+            if (els.showtimeBtn) {
+                els.showtimeBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (!state.showtimeMode) {
+                        // Turn ON and open popup to pick difficulty
+                        setShowtimeMode(true, { persist: true });
+                        openShowtimePopup();
+                    } else if (_showtimePopupOpen) {
+                        // Popup already open — close it (keep Showtime ON)
+                        closeShowtimePopup();
+                    } else {
+                        // Showtime ON, popup closed — re-open popup for difficulty change
+                        openShowtimePopup();
+                    }
+                });
+
+                // Right-click on Showtime button = turn OFF
+                els.showtimeBtn.addEventListener('contextmenu', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    closeShowtimePopup();
+                    setShowtimeMode(false, { persist: true });
+                });
+            }
+
+            // Close popup when clicking anywhere outside it
+            document.addEventListener('click', (e) => {
+                if (_showtimePopupOpen && els.showtimePopup && !els.showtimePopup.contains(e.target)) {
+                    closeShowtimePopup();
+                }
+            });
+
+            loadStoredShowtime();
+            syncShowtimeControls();
         }
 
         // ── Account strip ────────────────────────────────────────────────────────
@@ -1119,10 +1264,22 @@ const els = {
                     <strong>NONE</strong>
                 </div>`;
             const carrots = account.carrots || {};
+            const tpRecoveryMode = normalizeTpRecoveryMode((account.tp_recovery && account.tp_recovery.mode) || state.tpRecoveryMode);
+            state.tpRecoveryMode = tpRecoveryMode;
+            const tpRecoveryOptions = [
+                ['potion_first', 'Items → Carrots'],
+                ['potion_only',  'Items Only'],
+                ['jewels_only',  'Carrots Only']
+            ].map(([v, l]) => `<option value="${v}"${tpRecoveryMode === v ? ' selected' : ''}>${l}</option>`).join('');
             els.accountStrip.innerHTML = `
                 <div class="account-pill pill-tp">
                     <span class="label">TP</span>
                     <strong>${tp.current || 0}/${tp.max || 0}</strong>
+                </div>
+                <div class="account-pill pill-potion">
+                    <span class="label">TP POTIONS</span>
+                    <strong id="tp-recovery-potion-count">${formatNumber(account.potions || 0)}</strong>
+                    <select id="tp-recovery-mode-select" class="tp-recovery-select" aria-label="TP recovery mode">${tpRecoveryOptions}</select>
                 </div>
                 <div class="account-pill pill-carrots">
                     <span class="label">CARROTS</span>
@@ -1139,6 +1296,7 @@ const els = {
                 ${careerHtml}
             `;
             els.accountStrip.style.display = 'flex';
+            bindTpRecoveryControls();
             const careerPill = document.getElementById('career-pill');
             if (careerPill) careerPill.addEventListener('click', openCareerModal);
             loadStoredBurnClocks();
@@ -1231,8 +1389,12 @@ const els = {
             const runnerRunning = !!(state.runner && state.runner.running);
             const activeCareer = runnerRunning &&
                 state.account && state.account.career && state.account.career.active;
+            // Server-side active career (runner stopped mid-run): always allow resume,
+            // skip all selection and TP checks — the server will pick up the existing career.
+            const serverCareerActive = !!(state.account && state.account.career && state.account.career.active);
             if (!state.selectedPreset) return 'Select a preset';
             if (activeCareer) return '';
+            if (serverCareerActive) return '';
             if (!selection.deck) return 'Select a deck';
             if (!selection.friend) return 'Select a friend support';
             if (!selection.trainee) return 'Select a trainee';
@@ -1241,7 +1403,8 @@ const els = {
             const parentError = getParentSelectionError();
             if (parentError) return parentError;
             const tp = state.account && state.account.tp ? Number(state.account.tp.current || 0) : 0;
-            if (state.account && tp < 30 && !state.devEnabled) return `Not enough TP: ${tp}/30`;
+            const canRecover = state.tpRecoveryMode && state.tpRecoveryMode !== 'none';
+            if (state.account && tp < 30 && !state.devEnabled && !canRecover) return `Not enough TP: ${tp}/30`;
             return '';
         }
         function getParentLineageCards(parent) {
@@ -1267,7 +1430,7 @@ const els = {
                 els.startStatus.innerText = 'Starting runner...';
                 els.startStatus.classList.remove('error');
             } else {
-                const activeCareer = state.account && state.account.career && state.account.career.active;
+                const activeCareer = !!(state.account && state.account.career && state.account.career.active);
                 els.startCareerBtn.innerText = activeCareer ? 'RESUME CAREER' : 'RUN CAREER';
                 els.startStatus.innerText = reason;
                 els.startStatus.classList.toggle('error', false);
@@ -1389,26 +1552,42 @@ const els = {
                 const tooltip = card.querySelector('.sparks-tooltip');
                 if (!tooltip) return;
                 card.classList.add('has-sparks');
+
+                let hideTimer = null;
+
+                const cancelHide = () => {
+                    if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+                };
+                const scheduleHide = () => {
+                    cancelHide();
+                    hideTimer = setTimeout(() => {
+                        if (activeSparkCard === card) {
+                            activeSparkCard = null;
+                            activeSparkTooltip = null;
+                        }
+                        tooltip.classList.remove('is-visible');
+                        hideTimer = null;
+                    }, 120);
+                };
                 const show = () => {
+                    cancelHide();
                     if (tooltip.parentElement !== document.body) document.body.appendChild(tooltip);
                     activeSparkCard = card;
                     activeSparkTooltip = tooltip;
                     positionSparkTooltip(card, tooltip);
                     tooltip.classList.add('is-visible');
                 };
-                const hide = () => {
-                    if (activeSparkCard === card) {
-                        activeSparkCard = null;
-                        activeSparkTooltip = null;
-                    }
-                    tooltip.classList.remove('is-visible');
-                };
+
                 tooltip.addEventListener('click', event => event.stopPropagation());
                 tooltip.addEventListener('mousedown', event => event.stopPropagation());
+                // Keep tooltip open while mouse is inside it
+                tooltip.addEventListener('mouseenter', cancelHide);
+                tooltip.addEventListener('mouseleave', scheduleHide);
+
                 card.addEventListener('mouseenter', show);
-                card.addEventListener('mouseleave', hide);
+                card.addEventListener('mouseleave', scheduleHide);
                 card.addEventListener('focusin', show);
-                card.addEventListener('focusout', hide);
+                card.addEventListener('focusout', scheduleHide);
             });
         }
         document.addEventListener('scroll', () => {
@@ -1707,9 +1886,6 @@ const els = {
         }
 
         let skillDataCache = null;
-        let activeEditTier = null;
-        let activeSkillFilter = null;
-        let activeColorFilter = null;
 
         const SKILL_FILTERS = [
             { id: 101, label: 'Front' },
@@ -1724,265 +1900,9 @@ const els = {
             { id: 'turf', label: 'Turf' }
         ];
 
-        const COLOR_FILTERS = [
-            { id: 'green', label: 'Green', color: '#4ade80', iconPrefixes: ['1001', '1002', '1003', '1004', '1005', '1006'] },
-            { id: 'blue', label: 'Blue', color: '#60a5fa', iconPrefixes: ['2002'] },
-            { id: 'yellow', label: 'Yellow', color: '#fbbf24', iconPrefixes: ['2001', '2004', '2005', '2006', '2009'] },
-            { id: 'red', label: 'Red', color: '#f87171', iconPrefixes: ['3001', '3002', '3004', '3005', '3007'] }
-        ];
-
         // ── Skill editor ─────────────────────────────────────────────────────────
-        async function loadSkillData() {
-            if (skillDataCache) return skillDataCache;
-            try {
-                const res = await apiJson('/api/skills');
-                if (res.success && res.skills) {
-                    const uniqueMap = new Map();
-                    Object.entries(res.skills).forEach(([id, s]) => {
-                        if (!uniqueMap.has(s.name)) {
-                            uniqueMap.set(s.name, { id, ...s, tags: new Set(s.tags || []) });
-                        } else {
-                            const existing = uniqueMap.get(s.name);
-                            if (s.rarity > existing.rarity) existing.rarity = s.rarity;
-                            (s.tags || []).forEach(t => existing.tags.add(t));
-                        }
-                    });
-                    skillDataCache = Array.from(uniqueMap.values()).map(s => ({ ...s, tags: Array.from(s.tags) }));
-                    skillDataCache.sort((a, b) => a.name.localeCompare(b.name));
-                    return skillDataCache;
-                }
-            } catch (e) {}
-            return [];
-        }
 
-        function renderSkillFilters() {
-            const container = document.getElementById('skill-filters');
-            if (!container) return;
-            
-            let html = '<div style="display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px;">';
-            for (const filter of SKILL_FILTERS) {
-                const isActive = activeSkillFilter === filter.id;
-                const bg = isActive ? 'rgba(var(--accent-primary-rgb), 0.2)' : 'rgba(255,255,255,0.05)';
-                const border = isActive ? 'var(--accent-primary)' : 'transparent';
-                const color = isActive ? 'var(--text-main)' : '#a1a1aa';
-                html += `<div class="skill-filter-chip affinity-filter" data-id="${filter.id}" style="padding: 0.35rem 0.75rem; border-radius: 1rem; font-size: 0.75rem; cursor: pointer; background: ${bg}; border: 1px solid ${border}; color: ${color}; font-weight: bold; transition: all 0.1s;">${filter.label}</div>`;
-            }
-            html += '</div><div style="display: flex; flex-wrap: wrap; gap: 4px;">';
-            
-            for (const filter of COLOR_FILTERS) {
-                const isActive = activeColorFilter === filter.id;
-                const bg = isActive ? `${filter.color}33` : 'rgba(255,255,255,0.05)';
-                const border = isActive ? filter.color : 'transparent';
-                const color = isActive ? 'var(--text-main)' : filter.color;
-                html += `<div class="skill-filter-chip color-filter" data-color="${filter.id}" style="padding: 0.35rem 0.75rem; border-radius: 1rem; font-size: 0.75rem; cursor: pointer; background: ${bg}; border: 1px solid ${border}; color: ${color}; font-weight: bold; transition: all 0.1s;">${filter.label}</div>`;
-            }
-            html += '</div>';
-            
-            container.innerHTML = html;
-            
-            container.querySelectorAll('.affinity-filter').forEach(el => {
-                el.addEventListener('click', () => {
-                    let tagId = el.getAttribute('data-id');
-                    if (tagId !== 'turf') tagId = Number(tagId);
-                    
-                    if (activeSkillFilter === tagId) activeSkillFilter = null;
-                    else activeSkillFilter = tagId;
-                    
-                    renderSkillFilters();
-                    renderSkillList();
-                });
-            });
 
-            container.querySelectorAll('.color-filter').forEach(el => {
-                el.addEventListener('click', () => {
-                    const colorId = el.getAttribute('data-color');
-                    
-                    if (activeColorFilter === colorId) activeColorFilter = null;
-                    else activeColorFilter = colorId;
-                    
-                    renderSkillFilters();
-                    renderSkillList();
-                });
-            });
-        }
-
-        function renderSkillList() {
-            const query = (els.skillSearch?.value || '').toLowerCase();
-            const skills = skillDataCache || [];
-            const preset = getCurrentPreset() || {};
-            const STYLE_TAG = {1: 101, 2: 102, 3: 103, 4: 104};
-            const DIST_TAG = {1: 201, 2: 202, 3: 203, 4: 204};
-            const autoTags = new Set([
-                STYLE_TAG[preset.running_style],
-                DIST_TAG[preset.target_distance],
-            ].filter(Boolean));
-
-            let count = 0;
-            let html = '';
-            for (const s of skills) {
-                if (query && !s.name.toLowerCase().includes(query)) continue;
-
-                if (activeSkillFilter !== null) {
-                    const skillTags = s.tags || [];
-                    if (activeSkillFilter === 'turf') {
-                        if (skillTags.includes(502)) continue;
-                    } else {
-                        if (!skillTags.includes(activeSkillFilter)) continue;
-                    }
-                }
-
-                if (activeColorFilter !== null) {
-                    const iconId = String(s.icon_id || '');
-                    const colorFilter = COLOR_FILTERS.find(filter => filter.id === activeColorFilter);
-                    const skillColor = colorFilter && colorFilter.iconPrefixes.some(prefix => iconId.startsWith(prefix)) ? activeColorFilter : 'none';
-
-                    if (skillColor !== activeColorFilter) continue;
-                }
-
-                const skillTags = s.tags || [];
-                const mandatoryList = preset.mandatory_skill_list || [];
-                const isMandatory = mandatoryList.includes(s.name);
-                const isStyleAuto = !isMandatory && autoTags.size > 0 && skillTags.some(t => [101, 102, 103, 104].includes(t) && autoTags.has(t));
-                const isDistAuto = !isMandatory && autoTags.size > 0 && skillTags.some(t => [201, 202, 203, 204].includes(t) && autoTags.has(t));
-                const isAuto = isStyleAuto || isDistAuto;
-                const autoBadge = isMandatory
-                    ? `<span style="font-size:0.65rem;padding:0.1rem 0.4rem;border-radius:3px;background:#f59e0b22;color:#f59e0b;border:1px solid #f59e0b55;white-space:nowrap;">MANDATORY</span>`
-                    : isAuto
-                    ? `<span style="font-size:0.65rem;padding:0.1rem 0.4rem;border-radius:3px;background:${isStyleAuto ? '#7c3aed33' : '#0369a133'};color:${isStyleAuto ? '#a78bfa' : '#38bdf8'};border:1px solid ${isStyleAuto ? '#7c3aed66' : '#0369a166'};white-space:nowrap;">${isStyleAuto ? 'AUTO·STYLE' : 'AUTO·DIST'}</span>`
-                    : '';
-
-                count++;
-
-                html += `<div class="skill-list-item" data-name="${escapeAttr(s.name)}" style="padding: 0.5rem; background: rgba(255,255,255,0.03); border-radius: 4px; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: background 0.1s;">
-                    <span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-main); font-size: 0.85rem;">${escapeHtml(s.name)}</span>
-                    ${autoBadge}
-                </div>`;
-            }
-            
-            if (els.skillList) {
-                if (count === 0) {
-                    els.skillList.innerHTML = `<div style="padding: 1rem; color: #a1a1aa; font-size: 0.85rem;">No skills found.</div>`;
-                } else {
-                    els.skillList.innerHTML = html;
-                    els.skillList.querySelectorAll('.skill-list-item').forEach(el => {
-                        el.addEventListener('click', () => {
-                            const name = el.getAttribute('data-name');
-                            addSkillToFocusedArea(name);
-                        });
-                        el.addEventListener('mouseenter', () => el.style.background = 'rgba(255,255,255,0.1)');
-                        el.addEventListener('mouseleave', () => el.style.background = 'rgba(255,255,255,0.03)');
-                    });
-                }
-            }
-        }
-
-        // activeEditTier: number = tier idx, null = blacklist, 'mandatory' = mandatory list
-        function renderSkillEditorRightSide() {
-            const current = getCurrentPreset();
-            if (!current) {
-                if (els.skillTiersContainer) els.skillTiersContainer.innerHTML = '';
-                if (els.skillBlacklistContainer) els.skillBlacklistContainer.innerHTML = '';
-                if (els.skillMandatoryContainer) els.skillMandatoryContainer.innerHTML = '';
-                return;
-            }
-
-            let tiersHtml = '';
-            const storedTiers = current.learn_skill_list || [];
-            const tiers = storedTiers.length > 0 ? storedTiers : [[]];
-            tiers.forEach((tier, i) => {
-                const isActive = activeEditTier === i;
-                const itemsHtml = tier.map(s =>
-                    `<div class="skill-tag">
-                        ${escapeHtml(s)} <span class="skill-tag-del" data-tier="${i}" data-skill="${escapeAttr(s)}">&times;</span>
-                    </div>`
-                ).join('');
-
-                tiersHtml += `
-                <div class="skill-tier-dropzone ${isActive ? 'is-active' : ''}" data-tier="${i}">
-                    <div class="skill-tier-header">
-                        <span class="skill-tier-label">TIER ${i+1}</span>
-                        <button class="btn btn-sm btn-danger-soft skill-editor-action tier-del-btn" data-tier="${i}">DEL</button>
-                    </div>
-                    <div class="skill-tag-list">
-                        ${itemsHtml}
-                    </div>
-                </div>`;
-            });
-            if (els.skillTiersContainer) els.skillTiersContainer.innerHTML = tiersHtml;
-
-            if (els.skillBlacklistContainer) {
-                const isBlActive = activeEditTier === null;
-                els.skillBlacklistContainer.classList.toggle('is-active', isBlActive);
-
-                const blacklist = current.learn_skill_blacklist || [];
-                els.skillBlacklistContainer.innerHTML = blacklist.map(s =>
-                    `<div class="skill-tag blacklist">
-                        ${escapeHtml(s)} <span class="skill-tag-del" data-blacklist="true" data-skill="${escapeAttr(s)}">&times;</span>
-                    </div>`
-                ).join('');
-            }
-
-            if (els.skillMandatoryContainer) {
-                const isMandActive = activeEditTier === 'mandatory';
-                els.skillMandatoryContainer.classList.toggle('is-active', isMandActive);
-                const mandList = current.mandatory_skill_list || [];
-                els.skillMandatoryContainer.innerHTML = mandList.map(s =>
-                    `<div class="skill-tag" style="background:#f59e0b22;border-color:#f59e0b55;color:#f59e0b;">
-                        ${escapeHtml(s)} <span class="skill-tag-del" data-mandatory="true" data-skill="${escapeAttr(s)}">&times;</span>
-                    </div>`
-                ).join('');
-            }
-
-            els.skillTiersContainer?.querySelectorAll('.skill-tier-dropzone').forEach(el => {
-                el.addEventListener('click', (e) => {
-                    if (e.target.classList.contains('tier-del-btn') || e.target.classList.contains('skill-tag-del')) return;
-                    activeEditTier = parseInt(el.getAttribute('data-tier'));
-                    renderSkillEditorRightSide();
-                });
-            });
-            if (els.skillBlacklistContainer) {
-                els.skillBlacklistContainer.onclick = (e) => {
-                    if (e.target.classList.contains('skill-tag-del')) return;
-                    activeEditTier = null;
-                    renderSkillEditorRightSide();
-                };
-            }
-            if (els.skillMandatoryContainer) {
-                els.skillMandatoryContainer.onclick = (e) => {
-                    if (e.target.classList.contains('skill-tag-del')) return;
-                    activeEditTier = 'mandatory';
-                    renderSkillEditorRightSide();
-                };
-            }
-
-            els.skillTiersContainer?.querySelectorAll('.tier-del-btn').forEach(btn => {
-                btn.addEventListener('click', async () => {
-                    const idx = parseInt(btn.getAttribute('data-tier'));
-                    current.learn_skill_list = current.learn_skill_list || [];
-                    current.learn_skill_list.splice(idx, 1);
-                    if (activeEditTier === idx) activeEditTier = null;
-                    else if (typeof activeEditTier === 'number' && activeEditTier > idx) activeEditTier--;
-                    await savePresetConfig();
-                    renderSkillEditorRightSide();
-                });
-            });
-
-            document.querySelectorAll('.skill-tag-del').forEach(btn => {
-                btn.addEventListener('click', async () => {
-                    const skillName = btn.getAttribute('data-skill');
-                    if (btn.hasAttribute('data-mandatory')) {
-                        current.mandatory_skill_list = (current.mandatory_skill_list || []).filter(s => s !== skillName);
-                    } else if (btn.hasAttribute('data-blacklist')) {
-                        current.learn_skill_blacklist = current.learn_skill_blacklist.filter(s => s !== skillName);
-                    } else {
-                        const tierIdx = parseInt(btn.getAttribute('data-tier'));
-                        current.learn_skill_list[tierIdx] = current.learn_skill_list[tierIdx].filter(s => s !== skillName);
-                    }
-                    await savePresetConfig();
-                    renderSkillEditorRightSide();
-                });
-            });
-        }
 
         async function addSkillToFocusedArea(name) {
             const current = getCurrentPreset();
@@ -2009,21 +1929,6 @@ const els = {
             renderSkillEditorRightSide();
         }
 
-        function initSkillEditor() {
-            if (!state.selectedPreset) return;
-            activeEditTier = 0;
-
-            els.skillModal.style.display = 'flex';
-            if (els.skillSearch) els.skillSearch.value = '';
-            activeSkillFilter = null;
-            activeColorFilter = null;
-
-            loadSkillData().then(() => {
-                renderSkillFilters();
-                renderSkillList();
-            });
-            renderSkillEditorRightSide();
-        }
 
         const STAT_NAMES = ["Speed", "Stamina", "Power", "Guts", "Wit"];
         const STAT_COLORS = ["#4e8ef7", "#e05555", "#e07a30", "#4caf7d", "#d4b84e"];
@@ -2106,10 +2011,9 @@ const els = {
             const current = getCurrentPreset();
             if (!current) return;
 
-            current.learn_skill_threshold = parseInt(els.presetSkillThreshold.value) || 888;
             current.running_style = parseInt(els.presetRunningStyle?.value) || 1;
             current.target_distance = parseInt(els.presetTargetDistance?.value) || 0;
-            current.auto_buy_override_threshold = els.presetAutoBuyOverride ? els.presetAutoBuyOverride.checked : true;
+            current.skill_optimizer_mode = els.presetSkillOptimizerMode?.value || 'team_trials';
             if (!Array.isArray(current.mandatory_skill_list)) current.mandatory_skill_list = [];
             current.stat_priority = getStatPriorityFromDOM();
             const { ideals, mins } = getStatTargetsFromDOM();
@@ -2130,11 +2034,12 @@ const els = {
             const current = getCurrentPreset();
             if (!current) return;
 
-            els.presetSkillThreshold.value = current.learn_skill_threshold || 888;
             if (els.presetRunningStyle) els.presetRunningStyle.value = current.running_style || 1;
             if (els.presetTargetDistance) els.presetTargetDistance.value = current.target_distance || 0;
-            if (els.presetAutoBuyOverride) els.presetAutoBuyOverride.checked = current.auto_buy_override_threshold !== false;
+            if (els.presetSkillOptimizerMode) els.presetSkillOptimizerMode.value = current.skill_optimizer_mode || 'team_trials';
             renderStatPriority(current.stat_priority || [0, 1, 2, 3, 4], current.stat_ideal_targets || [0,0,0,0,0], current.stat_min_targets || [0,0,0,0,0]);
+            // Sync solver UI (defined at module level below)
+            if (typeof populateSolverUI === 'function') populateSolverUI();
         }
 
         function bindPresetHandlers() {
@@ -2149,135 +2054,9 @@ const els = {
             }
 
             const saveHandler = () => savePresetConfig();
-            els.presetSkillThreshold?.addEventListener('change', saveHandler);
             els.presetRunningStyle?.addEventListener('change', saveHandler);
             els.presetTargetDistance?.addEventListener('change', saveHandler);
             els.presetAutoBuyOverride?.addEventListener('change', saveHandler);
-
-            els.presetEditSkillsBtn?.addEventListener('click', () => {
-                if (!state.selectedPreset) return;
-                activeEditTier = 0;
-
-                els.skillModal.style.display = 'flex';
-                if (els.skillSearch) els.skillSearch.value = '';
-                activeSkillFilter = null;
-
-                loadSkillData().then(() => {
-                    renderSkillFilters();
-                    renderSkillList();
-                });
-                renderSkillEditorRightSide();
-            });
-            els.skillModalClose?.addEventListener('click', () => { els.skillModal.style.display = 'none'; });
-
-            els.skillSearch?.addEventListener('input', renderSkillList);
-
-            els.skillAddTierBtn?.addEventListener('click', async () => {
-                const current = getCurrentPreset();
-                if (!current) return;
-                if (!current.learn_skill_list) current.learn_skill_list = [];
-                current.learn_skill_list.push([]);
-                activeEditTier = current.learn_skill_list.length - 1;
-                await savePresetConfig();
-                renderSkillEditorRightSide();
-            });
-
-            document.getElementById('skill-select-all-btn')?.addEventListener('click', async () => {
-                const current = getCurrentPreset();
-                if (!current) return;
-                const visibleNodes = els.skillList?.querySelectorAll('.skill-list-item') || [];
-                let changed = false;
-
-                visibleNodes.forEach(node => {
-                    const name = node.getAttribute('data-name');
-                    if (activeEditTier === null) {
-                        if (!current.learn_skill_blacklist) current.learn_skill_blacklist = [];
-                        if (!current.learn_skill_blacklist.includes(name)) {
-                            current.learn_skill_blacklist.push(name);
-                            changed = true;
-                        }
-                    } else {
-                        if (!current.learn_skill_list) current.learn_skill_list = [];
-                        if (!current.learn_skill_list[activeEditTier]) current.learn_skill_list[activeEditTier] = [];
-                        if (!current.learn_skill_list[activeEditTier].includes(name)) {
-                            current.learn_skill_list[activeEditTier].push(name);
-                            changed = true;
-                        }
-                    }
-                });
-                if (changed) {
-                    await savePresetConfig();
-                    renderSkillEditorRightSide();
-                }
-            });
-
-            document.getElementById('skill-deselect-all-btn')?.addEventListener('click', async () => {
-                const current = getCurrentPreset();
-                if (!current) return;
-                const visibleNodes = els.skillList?.querySelectorAll('.skill-list-item') || [];
-                let changed = false;
-
-                const namesToRemove = Array.from(visibleNodes).map(node => node.getAttribute('data-name'));
-
-                if (activeEditTier === null) {
-                    if (current.learn_skill_blacklist) {
-                        const originalLen = current.learn_skill_blacklist.length;
-                        current.learn_skill_blacklist = current.learn_skill_blacklist.filter(s => !namesToRemove.includes(s));
-                        if (current.learn_skill_blacklist.length !== originalLen) changed = true;
-                    }
-                } else {
-                    if (current.learn_skill_list && current.learn_skill_list[activeEditTier]) {
-                        const originalLen = current.learn_skill_list[activeEditTier].length;
-                        current.learn_skill_list[activeEditTier] = current.learn_skill_list[activeEditTier].filter(s => !namesToRemove.includes(s));
-                        if (current.learn_skill_list[activeEditTier].length !== originalLen) changed = true;
-                    }
-                }
-
-                if (changed) {
-                    await savePresetConfig();
-                    renderSkillEditorRightSide();
-                }
-            });
-
-            document.getElementById('skill-blacklist-all-btn')?.addEventListener('click', async () => {
-                const current = getCurrentPreset();
-                if (!current) return;
-                const visibleNodes = els.skillList?.querySelectorAll('.skill-list-item') || [];
-                let changed = false;
-
-                if (!current.learn_skill_blacklist) current.learn_skill_blacklist = [];
-                visibleNodes.forEach(node => {
-                    const name = node.getAttribute('data-name');
-                    if (!current.learn_skill_blacklist.includes(name)) {
-                        current.learn_skill_blacklist.push(name);
-                        changed = true;
-                    }
-                });
-
-                if (changed) {
-                    await savePresetConfig();
-                    renderSkillEditorRightSide();
-                }
-            });
-            document.getElementById('skill-clear-blacklist-btn')?.addEventListener('click', async () => {
-                const current = getCurrentPreset();
-                if (!current) return;
-                if (current.learn_skill_blacklist && current.learn_skill_blacklist.length > 0) {
-                    current.learn_skill_blacklist = [];
-                    await savePresetConfig();
-                    renderSkillEditorRightSide();
-                }
-            });
-
-            document.getElementById('skill-clear-mandatory-btn')?.addEventListener('click', async () => {
-                const current = getCurrentPreset();
-                if (!current) return;
-                if (current.mandatory_skill_list && current.mandatory_skill_list.length > 0) {
-                    current.mandatory_skill_list = [];
-                    await savePresetConfig();
-                    renderSkillEditorRightSide();
-                }
-            });
 
             els.presetAddBtn?.addEventListener('click', async () => {
                 const newName = prompt("Enter new preset name:");
@@ -2295,10 +2074,7 @@ const els = {
                 const newPreset = {
                     name: normalizedName,
                     running_style: 1,
-                    learn_skill_list: [],
-                    learn_skill_blacklist: [],
                     extra_race_list: [],
-                    learn_skill_threshold: 888
                 };
 
                 try {
@@ -2513,8 +2289,10 @@ const els = {
                 deck_id: Number(selection.deck.id),
                 scenario_id: 4,
                 use_tp: 30,
-                difficulty_id: 0,
-                difficulty: 0,
+                // Showtime: difficulty_id=1003 (scenario), difficulty=400+level (e.g. Lv5=405)
+                // is_boost and boost_story_event_id are always 0 (confirmed via sniff)
+                difficulty_id: state.showtimeMode ? state.showtimeDifficultyId : 0,
+                difficulty: state.showtimeMode ? (400 + state.showtimeDifficulty) : 0,
                 is_boost: 0,
                 boost_story_event_id: 0,
                 preset_name: state.selectedPreset,
@@ -2585,12 +2363,12 @@ const els = {
 
                 const rows = (runner.action_history && runner.action_history.length) ? runner.action_history : deriveActionHistory(runner.log || []);
                 if (rows.length) renderActionHistory(rows);
-                // also update diagnostics panel if visible
-                const diagPane = document.getElementById('mode-diagnostics');
-                if (diagPane && diagPane.classList.contains('is-active')) {
-                    renderDiagCareer(runner, state.account, null);
-                    renderDiagLog(runner);
-                }
+                // update diagnostics — always use fresh selection from server so deck/parents
+                // display immediately on loop restart without needing SYNC or STOP
+                if (data.selection) state.selection = data.selection;
+                renderDiagCareer(runner, state.account, state.selection || null);
+                renderDiagLog(runner);
+                renderSkillOptimizer(runner);
                 if (runner.running) {
                     els.startStatus.classList.toggle('error', false);
                     if (!rows.length) els.startStatus.innerText = '';
@@ -2803,7 +2581,6 @@ const els = {
         // ── Grid rendering ───────────────────────────────────────────────────────
         function renderCounts(data) {
             els.umaCount.innerText = `(${data.umas.length})`;
-            els.cardCount.innerText = `(${data.supports.length})`;
             els.parentCount.innerText = `(${data.parents.length})`;
         }
         function renderDecks(decks) {
@@ -2964,125 +2741,6 @@ const els = {
                 </div>`;
             }).join('');
         }
-        // ── Deck Builder ──
-        const deckBuilder = { cards: [] }; // array of {id, name, rarity, type}
-
-        function renderDeckBuilder() {
-            const slots = document.getElementById('deck-builder-slots');
-            const count = document.getElementById('deck-builder-count');
-            const saveBtn = document.getElementById('deck-builder-save-btn');
-            if (!slots) return;
-            const n = deckBuilder.cards.length;
-            count.textContent = `(${n}/5 cards)`;
-            saveBtn.disabled = n !== 5;
-
-            // 5 fixed slots
-            slots.innerHTML = Array.from({length: 5}, (_, i) => {
-                const card = deckBuilder.cards[i];
-                if (card) {
-                    return `<div class="deck-builder-slot filled" data-slot="${i}" title="${escapeHtml(card.name)}">
-                        <img src="/api/images/${card.id}.png" onerror="hideBrokenImage(this)" style="width:100%;height:100%;object-fit:cover;border-radius:6px;">
-                        <button class="deck-slot-remove" data-slot="${i}" title="Remove">✕</button>
-                    </div>`;
-                }
-                return `<div class="deck-builder-slot empty" data-slot="${i}"><span style="font-size:1.4rem;opacity:0.25;">+</span></div>`;
-            }).join('');
-
-            // remove buttons
-            slots.querySelectorAll('.deck-slot-remove').forEach(btn => {
-                btn.addEventListener('click', e => {
-                    e.stopPropagation();
-                    const idx = parseInt(btn.dataset.slot);
-                    const removed = deckBuilder.cards.splice(idx, 1)[0];
-                    // un-highlight in card grid
-                    if (removed) {
-                        document.querySelectorAll(`#card-grid .grid-card.in-builder[data-card-id="${removed.id}"]`)
-                            .forEach(el => el.classList.remove('in-builder'));
-                    }
-                    renderDeckBuilder();
-                });
-            });
-        }
-
-        function deckBuilderToggleCard(card) {
-            const idx = deckBuilder.cards.findIndex(c => c.id === card.id);
-            if (idx >= 0) {
-                deckBuilder.cards.splice(idx, 1);
-            } else {
-                if (deckBuilder.cards.length >= 5) return; // full
-                deckBuilder.cards.push(card);
-            }
-            renderDeckBuilder();
-        }
-
-        function renderSupports(supports) {
-            els.cardGrid.innerHTML = supports.map(card => {
-                const imgId = card.id || '10001';
-                return `<div class="grid-card support-card" data-card-id="${card.id}" data-card='${JSON.stringify({id:card.id,name:card.name,rarity:card.rarity,type:card.type})}'>
-                    <img src="/api/images/${imgId}.png" onerror="hideBrokenImage(this)">
-                    <div class="grid-card-overlay">
-                        <span class="grid-card-kicker">${(card.rarity || '?') + ' | ' + (card.type || '?')}</span>
-                        <span class="grid-card-name">${card.name || 'Unknown'}</span>
-                    </div>
-                    <div class="builder-check" style="display:none;">✓</div>
-                </div>`;
-            }).join('');
-
-            els.cardGrid.querySelectorAll('.grid-card.support-card').forEach(el => {
-                el.addEventListener('click', () => {
-                    const card = JSON.parse(el.dataset.card);
-                    const inBuilder = deckBuilder.cards.findIndex(c => c.id === card.id) >= 0;
-                    if (!inBuilder && deckBuilder.cards.length >= 5) return;
-                    deckBuilderToggleCard(card);
-                    el.classList.toggle('in-builder', deckBuilder.cards.findIndex(c => c.id === card.id) >= 0);
-                });
-            });
-        }
-
-        // Deck builder clear button
-        document.getElementById('deck-builder-clear-btn')?.addEventListener('click', () => {
-            deckBuilder.cards = [];
-            document.querySelectorAll('#card-grid .grid-card.in-builder').forEach(el => el.classList.remove('in-builder'));
-            renderDeckBuilder();
-            const status = document.getElementById('deck-builder-status');
-            if (status) status.textContent = '';
-        });
-
-        // Deck builder save button
-        document.getElementById('deck-builder-save-btn')?.addEventListener('click', async () => {
-            if (deckBuilder.cards.length !== 5) return;
-            const saveBtn = document.getElementById('deck-builder-save-btn');
-            const status = document.getElementById('deck-builder-status');
-            saveBtn.disabled = true;
-            if (status) status.textContent = 'Saving...';
-            try {
-                const res = await apiJson('/api/deck/save', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({deck_id: 1, card_ids: deckBuilder.cards.map(c => Number(c.id))})
-                });
-                if (!res.success) throw new Error(res.detail || 'Save failed');
-                if (status) status.textContent = 'Saved to Slot 1!';
-                // Refresh deck list if dashData updated
-                if (dashData && active_dashboard_data_decks) {
-                    dashData.validDecks = active_dashboard_data_decks.filter(isValidDeck);
-                    renderDecks(dashData.validDecks);
-                } else {
-                    // just re-render with current data
-                    const d1 = deckBuilder.cards.map(c => ({id: c.id, name: c.name, rarity: c.rarity, type: c.type}));
-                    const existing = (dashData?.validDecks || []).filter(d => d.id !== 1);
-                    dashData.validDecks = [{id: 1, name: 'Deck 1', cards: d1}, ...existing];
-                    renderDecks(dashData.validDecks);
-                }
-            } catch (e) {
-                if (status) status.textContent = e.message || 'Save failed';
-            } finally {
-                saveBtn.disabled = deckBuilder.cards.length !== 5;
-            }
-        });
-
-        renderDeckBuilder(); // initial empty state
-
         // ── Dashboard init ───────────────────────────────────────────────────────
         function showDashboardView(data) {
             _sessionStartTime = Date.now();
@@ -3096,11 +2754,9 @@ const els = {
             showNavbar();
             renderAccountStrip(data.account);
             syncDashboardHeight();
-            // preload fan stats if the stats tab is active or was last used
-            try {
-                const ct = localStorage.getItem('uma_active_tab');
-                if (!ct || ct === 'tab-stats') fetchAndRenderFanStats();
-            } catch(e) {}
+            // Diagnostics is always the main view — start rendering immediately
+            refreshDiagnostics();
+            startDiagMetricsTimer();
         }
 
         function autoLoadCareerSelection() {
@@ -3223,7 +2879,6 @@ const els = {
             renderDecks(dashData.validDecks);
             renderParents(data.parents);
             renderTrainees(dashData.umas);
-            renderSupports(data.supports);
             resetSelection();
             if (data.selection) applyServerSelection(data.selection);
             autoLoadCareerSelection();
@@ -3268,7 +2923,7 @@ const els = {
         bindMasterDataControls();
         setLoadingScreen(true);
         restoreSession();
-})();
+
         // ── Fan Stats ────────────────────────────────────────────────────────
         let _fanStatsCache = null;
 
@@ -3295,78 +2950,83 @@ const els = {
             const panel = document.getElementById('fan-stats-panel');
             if (!panel || !data) return;
 
-            const circle = data.circle_info;
-            const circleHtml = circle ? `
-                <div class="master-data-panel" style="margin-bottom:0.75rem;">
-                    <div class="dashboard-section-title" style="font-size:0.75rem;margin-bottom:0.4rem;">CLUB</div>
-                    <div style="display:flex;flex-wrap:wrap;gap:0.5rem;">
-                        ${circle.name ? `<div class="account-pill"><span class="label">NAME</span><strong>${circle.name}</strong></div>` : ''}
-                        ${circle.member_count != null ? `<div class="account-pill"><span class="label">MEMBERS</span><strong>${circle.member_count}</strong></div>` : ''}
-                        ${circle.rank != null ? `<div class="account-pill"><span class="label">RANK</span><strong>${circle.rank}</strong></div>` : ''}
-                        ${circle.score != null ? `<div class="account-pill"><span class="label">SCORE</span><strong>${formatFanNumber(circle.score)}</strong></div>` : ''}
-                    </div>
-                </div>` : '';
+
 
             const currentFansHtml = data.current_fans != null ? `
-                <div class="account-pill pill-career" style="flex:1;min-width:120px;">
+                <div class="account-pill pill-career" style="flex:1;min-width:140px;font-size:1rem;padding:0.6rem 1rem;">
                     <span class="label">IN CAREER</span>
-                    <strong>${formatFanNumber(data.current_fans)}</strong>
+                    <strong style="font-size:1.3rem;">${formatFanNumber(data.current_fans)}</strong>
                 </div>` : '';
 
             const statsHtml = `
-                <div style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-bottom:0.75rem;">
+                <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:0.75rem;margin-bottom:1.5rem;">
                     ${currentFansHtml}
-                    <div class="account-pill pill-tp" style="flex:1;min-width:120px;">
+                    <div class="account-pill pill-tp" style="font-size:1rem;padding:0.6rem 1rem;">
                         <span class="label">SESSION</span>
-                        <strong>+${formatFanNumber(data.session_gained)}</strong>
+                        <strong style="font-size:1.3rem;">+${formatFanNumber(data.session_gained)}</strong>
                     </div>
-                    <div class="account-pill pill-gold" style="flex:1;min-width:120px;">
+                    <div class="account-pill pill-gold" style="font-size:1rem;padding:0.6rem 1rem;">
                         <span class="label">TODAY</span>
-                        <strong>+${formatFanNumber(data.today_gained)}</strong>
+                        <strong style="font-size:1.3rem;">+${formatFanNumber(data.today_gained)}</strong>
                     </div>
-                    <div class="account-pill pill-carrots" style="flex:1;min-width:120px;">
+                    <div class="account-pill pill-carrots" style="font-size:1rem;padding:0.6rem 1rem;">
                         <span class="label">ALL-TIME</span>
-                        <strong>+${formatFanNumber(data.total_gained)}</strong>
+                        <strong style="font-size:1.3rem;">+${formatFanNumber(data.total_gained)}</strong>
                     </div>
-                    <div class="account-pill" style="flex:1;min-width:120px;opacity:0.7;">
+                    <div class="account-pill" style="font-size:1rem;padding:0.6rem 1rem;opacity:0.8;">
                         <span class="label">CAREERS</span>
-                        <strong>${data.careers_count || 0}</strong>
+                        <strong style="font-size:1.3rem;">${data.careers_count || 0}</strong>
                     </div>
                 </div>`;
 
             const careers = data.recent_careers || [];
             const rowsHtml = careers.length === 0
-                ? '<div style="opacity:0.45;font-size:0.8rem;padding:0.5rem 0;">No careers recorded yet.</div>'
-                : `<table style="width:100%;border-collapse:collapse;font-size:0.78rem;">
+                ? '<div style="opacity:0.45;font-size:0.95rem;padding:1rem 0;">No careers recorded yet. Run <b>python backfill_fan_stats.py</b> to populate from existing logs.</div>'
+                : `<table style="width:100%;border-collapse:collapse;font-size:0.9rem;">
                     <thead>
-                        <tr style="opacity:0.55;text-transform:uppercase;font-size:0.7rem;">
-                            <th style="text-align:left;padding:0.2rem 0.4rem;">TIME</th>
-                            <th style="text-align:left;padding:0.2rem 0.4rem;">CHARA</th>
-                            <th style="text-align:right;padding:0.2rem 0.4rem;">FANS END</th>
-                            <th style="text-align:right;padding:0.2rem 0.4rem;">GAINED</th>
-                            <th style="text-align:right;padding:0.2rem 0.4rem;">TURN</th>
+                        <tr style="opacity:0.55;text-transform:uppercase;font-size:0.75rem;letter-spacing:0.08em;">
+                            <th style="text-align:left;padding:0.35rem 0.5rem;">TIME</th>
+                            <th style="text-align:left;padding:0.35rem 0.5rem;">RUNNER</th>
+                            <th style="text-align:right;padding:0.35rem 0.5rem;">GRADE</th>
+                            <th style="text-align:right;padding:0.35rem 0.5rem;">GAINED</th>
+                            <th style="text-align:right;padding:0.35rem 0.5rem;">TURN</th>
                         </tr>
                     </thead>
                     <tbody>
-                        ${careers.map(c => `
-                        <tr style="border-top:1px solid rgba(128,128,128,0.15);">
-                            <td style="padding:0.25rem 0.4rem;opacity:0.6;">${(c.timestamp || '').slice(11,16)}</td>
-                            <td style="padding:0.25rem 0.4rem;">${c.chara_name || c.card_id || '-'}</td>
-                            <td style="padding:0.25rem 0.4rem;text-align:right;">${formatFanNumber(c.final_fans)}</td>
-                            <td style="padding:0.25rem 0.4rem;text-align:right;color:var(--accent-color);">+${formatFanNumber(c.fans_gained)}</td>
-                            <td style="padding:0.25rem 0.4rem;text-align:right;opacity:0.6;">${c.final_turn || '-'}</td>
-                        </tr>`).join('')}
+                        ${careers.map(c => {
+                            const runnerLabel = c.chara_name || c.card_id || '-';
+                            const grade = c.grade || '-';
+                            const gradeColor = grade === 'S+' ? '#ffd700'
+                                             : grade === 'S'  ? '#c0c0c0'
+                                             : grade === 'A'  ? '#ff8c42'
+                                             : grade === 'B'  ? '#7ec8e3'
+                                             : 'rgba(180,180,180,0.6)';
+                            const statTotal = c.final_stats
+                                ? Object.values(c.final_stats).reduce((a,b)=>a+b,0)
+                                : null;
+                            const gradeTitle = statTotal ? `Total stats: ${statTotal.toLocaleString()}` : '';
+                            return `
+                        <tr class="career-history-row" data-started-at="${c.started_at || ''}"
+                            style="border-top:1px solid rgba(128,128,128,0.15);cursor:pointer;transition:background 0.12s;"
+                            onmouseover="this.style.background='rgba(128,128,128,0.08)'"
+                            onmouseout="this.style.background=''">
+                            <td style="padding:0.4rem 0.5rem;opacity:0.55;">${(c.started_at || c.timestamp || '').slice(0,16).replace('T',' ')}</td>
+                            <td style="padding:0.4rem 0.5rem;font-weight:600;">${runnerLabel}</td>
+                            <td style="padding:0.4rem 0.5rem;text-align:right;font-weight:700;color:${gradeColor}" title="${gradeTitle}">${grade}</td>
+                            <td style="padding:0.4rem 0.5rem;text-align:right;color:var(--accent-color);font-weight:700;">+${formatFanNumber(c.fans_gained)}</td>
+                            <td style="padding:0.4rem 0.5rem;text-align:right;opacity:0.55;">${c.final_turn || '-'}</td>
+                        `}).join('')}
                     </tbody>
                 </table>`;
 
-            const clearBtn = `<div style="margin-top:0.75rem;display:flex;gap:0.5rem;align-items:center;">
+            const clearBtn = `<div style="margin-top:1.25rem;display:flex;gap:0.6rem;align-items:center;">
                 <button class="btn btn-sm" id="fan-stats-refresh-btn" type="button">↻ REFRESH</button>
                 <button class="btn btn-sm btn-danger" id="fan-stats-clear-btn" type="button">CLEAR HISTORY</button>
             </div>`;
 
-            panel.innerHTML = circleHtml + statsHtml +
-                `<div class="master-data-panel">
-                    <div class="dashboard-section-title" style="font-size:0.75rem;margin-bottom:0.4rem;">RECENT CAREERS (last 30)</div>
+            panel.innerHTML = statsHtml +
+                `<div>
+                    <div style="font-size:0.7rem;font-weight:700;letter-spacing:0.12em;opacity:0.5;margin-bottom:0.75rem;">RECENT CAREERS (last 30) — click a row for details</div>
                     ${rowsHtml}
                 </div>` + clearBtn;
 
@@ -3374,8 +3034,403 @@ const els = {
             document.getElementById('fan-stats-clear-btn').addEventListener('click', async () => {
                 if (!confirm('Clear all fan stats history?')) return;
                 await apiJson('/api/stats/fans', { method: 'DELETE' });
+                _fanStatsCache = null;
                 fetchAndRenderFanStats();
             });
-        }
-        // ─────────────────────────────────────────────────────────────────────
 
+            // Clickable rows → detail view
+            panel.querySelectorAll('.career-history-row').forEach(row => {
+                row.addEventListener('click', () => showCareerDetail(row.dataset.startedAt));
+            });
+        }   // closes renderFanStats
+
+        async function showCareerDetail(startedAt) {
+            const panel = document.getElementById('fan-stats-panel');
+            const titleEl = document.getElementById('stats-modal-title');
+            if (!panel) return;
+
+            panel.innerHTML = '<div style="padding:2rem;opacity:0.5;text-align:center;">Loading…</div>';
+            if (titleEl) titleEl.textContent = 'CAREER DETAIL';
+
+            let d;
+            try {
+                d = await apiJson('/api/career/log-detail?started_at=' + encodeURIComponent(startedAt));
+            } catch(e) {
+                panel.innerHTML = `<div style="padding:1rem;color:var(--danger-color);">Failed to load log: ${e}</div>
+                    <button class="btn btn-sm" id="ch-back-btn">← BACK</button>`;
+                document.getElementById('ch-back-btn').addEventListener('click', () => {
+                    if (titleEl) titleEl.textContent = 'CAREER HISTORY';
+                    renderFanStats(_fanStatsCache);
+                });
+                return;
+            }
+
+            if (d.error) {
+                panel.innerHTML = `<div style="padding:1rem;opacity:0.55;">Log not found for this career (log may have been deleted).</div>
+                    <button class="btn btn-sm" id="ch-back-btn">← BACK</button>`;
+                document.getElementById('ch-back-btn').addEventListener('click', () => {
+                    if (titleEl) titleEl.textContent = 'CAREER HISTORY';
+                    renderFanStats(_fanStatsCache);
+                });
+                return;
+            }
+
+            const st = d.final_stats || {};
+            const statRows = [
+                ['SPD', st.speed], ['STA', st.stamina], ['PWR', st.power],
+                ['GUT', st.guts], ['WIT', st.wit], ['SP', st.skill_point]
+            ];
+            const statsGrid = statRows.map(([label, val]) => `
+                <div style="background:rgba(128,128,128,0.1);border-radius:6px;padding:0.5rem 0.75rem;min-width:80px;text-align:center;">
+                    <div style="font-size:0.65rem;font-weight:700;letter-spacing:0.1em;opacity:0.5;">${label}</div>
+                    <div style="font-size:1.1rem;font-weight:700;">${val != null ? val.toLocaleString() : '—'}</div>
+                </div>`).join('');
+
+            const skills = d.skills_selected || [];
+            const skillsHtml = skills.length === 0
+                ? '<div style="opacity:0.45;padding:0.5rem 0;">No skill purchase data in log.</div>'
+                : skills.map(sk => `
+                    <div style="display:flex;justify-content:space-between;align-items:baseline;padding:0.3rem 0;border-bottom:1px solid rgba(128,128,128,0.1);">
+                        <span style="font-weight:600;">${sk.name || sk.skill_id}</span>
+                        <span style="opacity:0.55;font-size:0.85rem;white-space:nowrap;margin-left:0.75rem;">${sk.cost ? sk.cost + ' SP' : ''}</span>
+                    </div>`).join('');
+
+            const dateStr = (d.started_at || '').slice(0,16).replace('T', ' ');
+            const statusBadge = d.status === 'finished'
+                ? '<span style="color:#4caf50;font-weight:700;">✓ FINISHED</span>'
+                : `<span style="opacity:0.55;">${(d.status || '').toUpperCase()}</span>`;
+
+            panel.innerHTML = `
+                <div style="margin-bottom:1rem;">
+                    <button class="btn btn-sm" id="ch-back-btn">← BACK</button>
+                </div>
+                <div style="margin-bottom:1rem;">
+                    <div style="font-size:0.75rem;opacity:0.5;">${dateStr} · Turn ${d.final_turn || '?'} · ${statusBadge}</div>
+                    <div style="font-size:1.1rem;font-weight:700;margin-top:0.25rem;">${d.preset_name || '—'}</div>
+                </div>
+
+                <div style="display:flex;gap:0.75rem;flex-wrap:wrap;margin-bottom:1.25rem;">
+                    ${statsGrid}
+                </div>
+
+                <div style="display:flex;gap:0.75rem;margin-bottom:1.5rem;flex-wrap:wrap;">
+                    <div class="account-pill pill-carrots" style="font-size:0.95rem;padding:0.5rem 1rem;">
+                        <span class="label">FANS END</span>
+                        <strong>${formatFanNumber(d.final_fans)}</strong>
+                    </div>
+                    <div class="account-pill pill-gold" style="font-size:0.95rem;padding:0.5rem 1rem;">
+                        <span class="label">GAINED</span>
+                        <strong>+${formatFanNumber(d.fans_gained)}</strong>
+                    </div>
+                </div>
+
+                <div style="font-size:0.7rem;font-weight:700;letter-spacing:0.1em;opacity:0.5;margin-bottom:0.6rem;">
+                    SKILLS BOUGHT (${skills.length})
+                </div>
+                <div style="margin-bottom:1rem;">${skillsHtml}</div>
+            `;
+
+            document.getElementById('ch-back-btn').addEventListener('click', () => {
+                if (titleEl) titleEl.textContent = 'CAREER HISTORY';
+                renderFanStats(_fanStatsCache);
+            });
+        }   // closes showCareerDetail
+
+})();   // closes main IIFE
+
+// ── AI Tab ────────────────────────────────────────────────────────────────────
+
+let _aiPollTimer = null;
+
+function fmtPct(v) {
+    if (v == null) return '—';
+    return (v * 100).toFixed(1) + '%';
+}
+
+function setText(id, val) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = val ?? '—';
+}
+
+async function fetchAiStatus() {
+    try {
+        const [status, trainer, tips, programs] = await Promise.all([
+            apiJson('/api/ai/status'),
+            apiJson('/api/ai/auto-training/status'),
+            apiJson('/api/ai/advisor/latest'),
+            apiJson('/api/ai/advisor/programs'),
+        ]);
+
+        // Dataset counts
+        const files = status.files || {};
+        const turns  = (files.turn_decisions  || {}).record_count || 0;
+        const careers = (files.career_summaries || {}).record_count || 0;
+        setText('ai-dataset-info', `${turns} turns / ${careers} careers`);
+
+        // Trainer state
+        const autoOn = trainer.auto_training_enabled;
+        setText('ai-autotrain-status', autoOn ? 'ON' : 'OFF');
+        setText('ai-last-trained', trainer.last_trained_at ? trainer.last_trained_at.slice(0,16).replace('T',' ') : 'Never');
+
+        // Dashboard stats (from tips)
+        setText('ai-total-careers', tips.total_careers ?? '—');
+        setText('ai-win-rate', tips.overall_win_rate != null ? fmtPct(tips.overall_win_rate) : '—');
+
+        // Auto-train toggle sync
+        const toggle = document.getElementById('ai-autotrain-toggle');
+        if (toggle) toggle.checked = !!autoOn;
+
+        // Tips
+        const tipsPanel = document.getElementById('ai-tips-panel');
+        if (tipsPanel) {
+            const tipsList = tips.tips || [];
+            if (!tips.available || tipsList.length === 0) {
+                tipsPanel.innerHTML = '<span style="opacity:0.5">Run a few careers to unlock tips.</span>';
+            } else {
+                tipsPanel.innerHTML = tipsList.map(t => `<div class="ai-tip-item">${t}</div>`).join('');
+            }
+        }
+
+        // Race programs table
+        const tableContainer = document.getElementById('ai-programs-table');
+        if (tableContainer) {
+            const progs = (programs.programs || []).slice(0, 20);
+            if (progs.length === 0) {
+                tableContainer.innerHTML = '<span style="opacity:0.5;font-size:12px;">No race data yet.</span>';
+            } else {
+                const rows = progs.map(p => {
+                    const adj  = p.adjustment != null ? p.adjustment.toFixed(3) : '—';
+                    const wr   = p.win_rate   != null ? fmtPct(p.win_rate) : '—';
+                    const lcb  = p.lcb        != null ? p.lcb.toFixed(3) : '—';
+                    const ucb  = p.ucb        != null ? p.ucb.toFixed(3) : '—';
+                    const runs = p.starts ?? '—';
+                    return `<tr>
+                        <td>${p.program_id}</td>
+                        <td>${runs}</td>
+                        <td>${wr}</td>
+                        <td>${adj}</td>
+                        <td style="opacity:0.6">${lcb} – ${ucb}</td>
+                    </tr>`;
+                }).join('');
+                tableContainer.innerHTML = `<table class="ai-programs-table">
+                    <thead><tr>
+                        <th>PROGRAM</th><th>RUNS</th><th>WIN%</th><th>SCORE</th><th>LCB–UCB</th>
+                    </tr></thead>
+                    <tbody>${rows}</tbody>
+                </table>`;
+            }
+        }
+    } catch (e) {
+        // Silent — AI tab is best-effort
+    }
+}
+
+function startAiPolling() {
+    fetchAiStatus();
+    if (_aiPollTimer) clearInterval(_aiPollTimer);
+    _aiPollTimer = setInterval(fetchAiStatus, 15000);
+}
+
+function stopAiPolling() {
+    if (_aiPollTimer) { clearInterval(_aiPollTimer); _aiPollTimer = null; }
+}
+
+function initAiTab() {
+    // Train now button
+    const trainBtn = document.getElementById('ai-train-now-btn');
+    if (trainBtn) {
+        trainBtn.addEventListener('click', async () => {
+            trainBtn.disabled = true;
+            trainBtn.textContent = 'TRAINING…';
+            try {
+                const result = await apiJson('/api/ai/train-now', { method: 'POST' });
+                trainBtn.textContent = result.success ? 'DONE ✓' : 'ERROR';
+                setTimeout(() => { trainBtn.textContent = 'TRAIN NOW'; trainBtn.disabled = false; }, 2500);
+                fetchAiStatus();
+            } catch (e) {
+                trainBtn.textContent = 'TRAIN NOW';
+                trainBtn.disabled = false;
+            }
+        });
+    }
+
+    // Auto-train toggle
+    const toggle = document.getElementById('ai-autotrain-toggle');
+    if (toggle) {
+        toggle.addEventListener('change', async () => {
+            await apiJson('/api/ai/auto-training/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ enabled: toggle.checked }),
+            });
+        });
+    }
+}
+
+// initAiTab wires up the train-now button and auto-train toggle inside the AI modal.
+// Called once on DOMContentLoaded.
+document.addEventListener('DOMContentLoaded', () => {
+    initAiTab();
+});
+
+// ── Race Solver UI ──────────────────────────────────────────────────────────
+
+function initSolverUI() {
+    // Mode toggle buttons
+    const modeContainer = document.getElementById('solver-mode-btns');
+    if (!modeContainer) return;
+
+    const autoPanel   = document.getElementById('solver-auto-panel');
+    const manualPanel = document.getElementById('solver-manual-panel');
+
+    // Use window-exposed helpers so this out-of-IIFE function can reach app state.
+    const getPreset  = () => window.getCurrentPreset?.();
+    const savePreset = (p) => window.saveCurrentPreset?.(p);
+
+    function getSolverMode() {
+        return (getPreset()?.race_solver_mode) || 'manual';
+    }
+
+    function applyMode(mode) {
+        modeContainer.querySelectorAll('.solver-mode-btn').forEach(btn => {
+            btn.classList.toggle('is-active', btn.dataset.mode === mode);
+        });
+        if (autoPanel)   autoPanel.style.display  = (mode === 'auto')   ? '' : 'none';
+        if (manualPanel) manualPanel.style.display = (mode === 'manual') ? '' : 'none';
+        if (mode === 'auto') {
+            const name = getPreset()?.name;
+            if (name) loadSolverPlanPreview(name);
+        }
+        if (mode === 'manual') {
+            if (typeof openModal === 'function') openModal('race-manual-modal');
+            if (typeof renderRaces === 'function') setTimeout(() => renderRaces(), 30);
+        }
+    }
+
+    // Populate solver config fields from the current preset.
+    function populateSolverUI() {
+        const current = getPreset();
+        if (!current) return;
+        applyMode(current.race_solver_mode || 'manual');
+        const streak = document.getElementById('solver-max-streak');
+        const apt    = document.getElementById('solver-apt-floor');
+        const op     = document.getElementById('solver-include-op');
+        const summer = document.getElementById('solver-allow-summer');
+        if (streak) streak.value   = current.solver_max_races_in_row ?? 2;
+        if (apt)    apt.value      = current.solver_apt_floor ?? 6;
+        if (op)     op.checked     = Boolean(current.solver_include_op);
+        if (summer) summer.checked = Boolean(current.solver_allow_summer);
+        if (current.race_solver_mode === 'auto' && current.name) {
+            loadSolverPlanPreview(current.name);
+        }
+    }
+    // Expose so the in-IIFE preset-change handler can call it.
+    window.populateSolverUI = populateSolverUI;
+
+    modeContainer.querySelectorAll('.solver-mode-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const mode = btn.dataset.mode;
+            const current = getPreset();
+            if (current) {
+                current.race_solver_mode = mode;
+                await savePreset(current);
+            }
+            applyMode(mode);
+        });
+    });
+
+    // Solver config inputs — save on change
+    const solverFields = ['solver-max-streak', 'solver-apt-floor', 'solver-include-op', 'solver-allow-summer'];
+    solverFields.forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener('change', async () => {
+            const current = getPreset();
+            if (!current) return;
+            current.solver_max_races_in_row = parseInt(document.getElementById('solver-max-streak')?.value) || 2;
+            current.solver_apt_floor        = parseInt(document.getElementById('solver-apt-floor')?.value)  || 6;
+            current.solver_include_op       = document.getElementById('solver-include-op')?.checked  || false;
+            current.solver_allow_summer     = document.getElementById('solver-allow-summer')?.checked || false;
+            await savePreset(current);
+        });
+    });
+
+    // SOLVE NOW button
+    const runBtn = document.getElementById('solver-run-btn');
+    if (runBtn) {
+        runBtn.addEventListener('click', async () => {
+            const current = getPreset();
+            if (!current?.name) return;
+            const statusEl = document.getElementById('solver-status-text');
+            if (statusEl) statusEl.textContent = 'Solving…';
+            runBtn.disabled = true;
+            try {
+                const apiJson = window.apiJson;
+                const res = await apiJson('/api/solver/run', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ preset_name: current.name }),
+                });
+                if (res.success) {
+                    if (statusEl) statusEl.textContent = `✓ ${res.race_count} races (${res.backend})`;
+                    loadSolverPlanPreview(current.name);
+                } else {
+                    if (statusEl) statusEl.textContent = `✗ ${res.error || 'failed'}`;
+                }
+            } catch (e) {
+                if (statusEl) statusEl.textContent = `✗ ${e.message}`;
+            } finally {
+                runBtn.disabled = false;
+            }
+        });
+    }
+
+    // Initial sync once DOM is ready (preset may not be loaded yet; populateSolverUI
+    // will be called again by the in-IIFE preset-change handler when state settles).
+    applyMode(getSolverMode());
+}
+
+async function loadSolverPlanPreview(presetName) {
+    const panel     = document.getElementById('solver-plan-panel');
+    const tableEl   = document.getElementById('solver-plan-table');
+    const labelEl   = document.getElementById('solver-plan-label');
+    const statusEl  = document.getElementById('solver-status-text');
+    if (!panel || !tableEl) return;
+
+    try {
+        const data = await apiJson(`/api/solver/plan/${encodeURIComponent(presetName)}`);
+        if (!data?.success) {
+            panel.style.display = 'none';
+            if (statusEl) statusEl.textContent = 'No plan — click SOLVE NOW';
+            return;
+        }
+        panel.style.display = '';
+        const races = data.schedule || [];
+        if (labelEl) labelEl.textContent = `${races.length} races planned · ${data.backend || 'beam'}`;
+        if (statusEl) statusEl.textContent = `✓ ${races.length} races`;
+        tableEl.innerHTML = races.length === 0
+            ? '<div style="opacity:0.5;font-size:0.78rem;">No races scheduled.</div>'
+            : `<table style="width:100%;border-collapse:collapse;font-size:0.75rem;">
+                <thead><tr style="opacity:0.5;font-size:0.7rem;text-transform:uppercase;">
+                    <th style="text-align:left;padding:0.15rem 0.3rem;">T</th>
+                    <th style="text-align:left;padding:0.15rem 0.3rem;">Race</th>
+                    <th style="text-align:left;padding:0.15rem 0.3rem;">Grade</th>
+                    <th style="text-align:right;padding:0.15rem 0.3rem;">Dist</th>
+                </tr></thead>
+                <tbody>
+                    ${races.map(r => `
+                    <tr style="border-top:1px solid rgba(128,128,128,0.12);">
+                        <td style="padding:0.15rem 0.3rem;opacity:0.6;">${r.turn}</td>
+                        <td style="padding:0.15rem 0.3rem;">${r.name || r.program_id}</td>
+                        <td style="padding:0.15rem 0.3rem;opacity:0.7;">${r.grade || ''}</td>
+                        <td style="padding:0.15rem 0.3rem;text-align:right;opacity:0.7;">${r.distance ? r.distance + 'm' : ''}</td>
+                    </tr>`).join('')}
+                </tbody>
+            </table>`;
+    } catch (e) {
+        panel.style.display = 'none';
+        if (statusEl) statusEl.textContent = '✗ could not load plan';
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => { initSolverUI(); });

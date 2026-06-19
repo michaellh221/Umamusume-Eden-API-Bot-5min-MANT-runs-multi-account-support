@@ -161,6 +161,7 @@ class CareerRunner:
             self.burn_clocks = burn_clocks
             self.dev_mode = dev_mode
             self.race_planner = RacePlanner(self.base_dir)
+            self.race_planner.load_solver_plan(preset)
             self.skill_buyer = SkillBuyer(self.base_dir)
             self.item_manager = MantItemManager()
             self.status = {
@@ -206,6 +207,11 @@ class CareerRunner:
         with self.lock:
             data = dict(self.status)
             data["burn_clocks"] = self.burn_clocks
+            data["skill_optimizer"] = {
+                "candidates": list(self.skill_buyer.last_candidates),
+                "selected":   list(self.skill_buyer.last_selected),
+                "result":     dict(self.skill_buyer.last_result),
+            }
             return data
 
     def set_burn_clocks(self, value):
@@ -229,15 +235,31 @@ class CareerRunner:
                     if hasattr(client, "wait_turn_delay"):
                         client.wait_turn_delay()
                     last_turn = turn
-                
+
+                    # Warn once (at first real turn) if preset running style doesn't
+                    # match the chara's best aptitude — buying the wrong style skills
+                    # wastes all SP at career end.
+                    if turn == 1 and chara:
+                        _style_names = {1: "nige (front)", 2: "senko (pace)", 3: "sashi (late)", 4: "oikomi (end)"}
+                        _apt_fields  = {1: "proper_running_style_nige", 2: "proper_running_style_senko",
+                                        3: "proper_running_style_sashi", 4: "proper_running_style_oikomi"}
+                        _preset_style = int(preset.get("running_style") or 0)
+                        if _preset_style in _apt_fields:
+                            best_style = max(_apt_fields, key=lambda s: int(chara.get(_apt_fields[s]) or 0))
+                            preset_apt = int(chara.get(_apt_fields[_preset_style]) or 0)
+                            best_apt   = int(chara.get(_apt_fields[best_style]) or 0)
+                            if best_style != _preset_style and best_apt > preset_apt + 1:
+                                print(
+                                    f"[WARN] Preset style={_style_names.get(_preset_style)} (aptitude {preset_apt}) "
+                                    f"but chara's best is {_style_names.get(best_style)} (aptitude {best_apt}). "
+                                    f"Skills will be bought for the preset style. "
+                                    f"Change preset running_style to avoid wasting SP.",
+                                    flush=True
+                                )
+
                 self._mark(turn=turn, current_fans=int(chara.get("fans") or 0))
                 self._track_turn_scores(state)
 
-                if turn == 77 and not getattr(self, "dev_mode", False):
-                    print("Turn 77 reached terminating", flush=True)
-                    self.stop()
-                    break
-                
                 self.skill_buyer.last_attempt = []
                 self.skill_buyer.last_result = {}
                 self.item_manager.last_buy_attempt = []
@@ -387,6 +409,10 @@ class CareerRunner:
                         print(f"SP still high ({chara.get('skill_point')}), retrying final purchase...")
                         state = self._buy_skills(client, state, preset, True)
 
+                    # Capture fans/card_id NOW — finish_career response has empty chara_info
+                    _pre_chara = (state.get('data') or {}).get('chara_info') or {}
+                    _pre_fans   = int(_pre_chara.get('fans') or 0)
+                    _pre_card   = str(_pre_chara.get('card_id') or '')
                     try:
                         state = client.finish_career(current_turn=decision.payload["current_turn"], is_force_delete=False)
                     except Exception as e:
@@ -395,11 +421,19 @@ class CareerRunner:
                         else:
                             raise
                     _fin_chara = (state.get('data') or {}).get('chara_info') or {}
+                    _final_stats = {
+                        "speed":   int(_pre_chara.get('speed') or 0),
+                        "stamina": int(_pre_chara.get('stamina') or 0),
+                        "power":   int(_pre_chara.get('power') or 0),
+                        "guts":    int(_pre_chara.get('guts') or 0),
+                        "wit":     int(_pre_chara.get('wit') or 0),
+                    }
                     self._mark(
                         last_action="finish",
                         finished=True,
-                        final_fans=int(_fin_chara.get('fans') or 0),
-                        final_card_id=str(_fin_chara.get('card_id') or ''),
+                        final_fans=int(_fin_chara.get('fans') or 0) or _pre_fans,
+                        final_card_id=str(_fin_chara.get('card_id') or '') or _pre_card,
+                        final_stats=_final_stats,
                     )
                     break
                 else:
@@ -609,6 +643,9 @@ class CareerRunner:
         chara = data.get("chara_info") or {}
         free = data.get("free_data_set") or {}
         self.skill_buyer.preview(state, preset)
+        # Keep live inventory in snapshot so UI can display it every turn
+        with self.lock:
+            self.status["inventory"] = self._debug_inventory(state)
         self._debug("turn", state, {
             "owned_skills": self._debug_owned_skills(state),
             "inventory": self._debug_inventory(state),
@@ -637,12 +674,10 @@ class CareerRunner:
         points = int(chara.get("skill_point") or 0)
         owned = {int(item.get("skill_id") or 0) for item in chara.get("skill_array") or []}
         owned_groups = {self.skill_buyer.skill_to_group_id.get(skill_id, skill_id // 10) for skill_id in owned}
-        priority = self.skill_buyer._priority_context(preset)
-        blacklist = self.skill_buyer._blacklist(preset)
         selected = {item["skill_id"]: item for item in self.skill_buyer._candidates(chara, preset)}
         result = []
         for tip in chara.get("skill_tips_array") or []:
-            resolved = self.skill_buyer.resolve_skill_tip(tip, owned, owned_groups, priority, blacklist, preset)
+            resolved = self.skill_buyer.resolve_skill_tip(tip, owned, owned_groups, preset)
             skill_id = int((resolved or {}).get("resolved_skill_id") or 0)
             cost = int((resolved or {}).get("cost") or 0)
             selected_flag = skill_id in selected
@@ -1028,51 +1063,91 @@ class CareerRunner:
         is_short = 1
         res = client.race_start(is_short=is_short, current_turn=current_turn)
         self._log("race_start", current_turn, f"short {is_short}")
+        print(f"[t{current_turn}] race_start", flush=True)
 
         rank = self._parse_race_rank(res)
         self._log("race_rank", current_turn, f"rank {rank}")
+        print(f"[t{current_turn}] race_rank: {rank}", flush=True)
         with self.lock:
             self.status["_last_race_rank"] = rank
 
-        home_info = (state.get("data") or {}).get("home_info") or {}
+        _res_data = res.get("data") or {}
+        entry_data = entry.get("data") or {}
+
+        # Clock availability: race_start home_info is authoritative.
+        # Use `is not None` so that an explicit empty dict {} (= 0 clocks)
+        # is NOT silently replaced by stale data from the entry response.
+        _rs_home_info = _res_data.get("home_info")
+        if _rs_home_info is not None:
+            home_info = _rs_home_info
+        else:
+            home_info = entry_data.get("home_info") or (state.get("data") or {}).get("home_info") or {}
+
         std_clocks = int(home_info.get("available_continue_num", 0))
         free_clocks = int(home_info.get("available_free_continue_num", 0))
 
-        while self.burn_clocks and rank > 1 and (std_clocks > 0 or free_clocks > 0):
-            clocks_left = std_clocks + free_clocks
+        # Only retry if we actually have standard or free clocks.
+        _clock_retries_this_race = 0
+        _MAX_CLOCK_RETRIES = 5
+        while self.burn_clocks and rank > 1 and (std_clocks > 0 or free_clocks > 0) and _clock_retries_this_race < _MAX_CLOCK_RETRIES:
             continue_type = 1 if free_clocks > 0 else 2
-            
-            self._log("race_clock", current_turn, f"rank {rank}, using clock ({clocks_left} left, type {continue_type})...")
+            clocks_left = std_clocks + free_clocks
+            _clock_retries_this_race += 1
+            self._log("race_clock", current_turn, f"rank {rank}, {clocks_left} clocks left, type {continue_type}, attempt {_clock_retries_this_race}/{_MAX_CLOCK_RETRIES}")
             try:
                 cont_res = client.race_continue(current_turn=current_turn, continue_type=continue_type)
-                
+
                 cont_data = cont_res.get("data") or {}
                 new_home_info = cont_data.get("home_info")
-                if isinstance(new_home_info, dict):
+                if isinstance(new_home_info, dict) and "available_continue_num" in new_home_info:
                     std_clocks = int(new_home_info.get("available_continue_num", 0))
                     free_clocks = int(new_home_info.get("available_free_continue_num", 0))
                 else:
-                    if free_clocks > 0:
-                        free_clocks -= 1
+                    if continue_type == 1:
+                        free_clocks = max(0, free_clocks - 1)
                     else:
-                        std_clocks -= 1
+                        std_clocks = max(0, std_clocks - 1)
 
-                if strategy:
-                    if cont_data.get("unchecked_event_array"):
-                        self._drain_events(client, strategy, cont_res)
-                
-                roll = dna_gauss(0.166 + client.api_jitter, 0.05)
+                if strategy and cont_data.get("unchecked_event_array"):
+                    self._drain_events(client, strategy, cont_res)
+
                 dna_sleep(0.1, 0.45, 0.166 + client.api_jitter, 0.05)
                 res = client.race_start(is_short=is_short, current_turn=current_turn)
                 rank = self._parse_race_rank(res)
                 self._log("race_rank_retry", current_turn, f"rank {rank} after clock")
                 with self.lock:
                     self.status["_last_race_rank"] = rank
-                with self.lock:
                     self.status["clocks_used"] = int(self.status.get("clocks_used") or 0) + 1
             except Exception as e:
-                self._log("race_clock_failed", current_turn, str(e))
+                err_str = str(e)
+                self._log("race_clock_failed", current_turn, err_str)
+                if "205" in err_str or "208" in err_str:
+                    print(f"[t{current_turn}] clock retry aborted ({err_str[:40]}), stopping retries for this race", flush=True)
+                    std_clocks = 0
+                    free_clocks = 0
                 break
+
+        # Jewel continue: if BURN CLOCKS is on, no std/free clocks remain,
+        # and the race was not won, try a jewel continue (continue_type=3).
+        # If the server refuses (205) or we can't afford it, skip gracefully.
+        if self.burn_clocks and rank > 1:
+            jewels = int((client.coin_info or {}).get("fcoin", 0)) + int((client.coin_info or {}).get("coin", 0))
+            if jewels > 0:
+                self._log("race_jewel_continue", current_turn, f"rank {rank}, jewels={jewels}")
+                try:
+                    cont_res = client.race_continue(current_turn=current_turn, continue_type=3)
+                    cont_data = cont_res.get("data") or {}
+                    if strategy and cont_data.get("unchecked_event_array"):
+                        self._drain_events(client, strategy, cont_res)
+                    dna_sleep(0.1, 0.45, 0.166 + client.api_jitter, 0.05)
+                    res = client.race_start(is_short=is_short, current_turn=current_turn)
+                    rank = self._parse_race_rank(res)
+                    self._log("race_rank_jewel", current_turn, f"rank {rank} after jewel continue")
+                    with self.lock:
+                        self.status["_last_race_rank"] = rank
+                except Exception as e:
+                    self._log("race_jewel_failed", current_turn, str(e))
+                    # 205 = server won't allow it, any error = skip gracefully
 
         if strategy:
             res_data = res.get("data") or {}
@@ -1083,15 +1158,17 @@ class CareerRunner:
         try:
             client.race_end(current_turn=current_turn)
             self._log("race_end", current_turn, "")
+            print(f"[t{current_turn}] race_end", flush=True)
         except Exception as e:
-            if any(err in str(e) for err in ("102", "1503")):
-                self._log("race_end_reconciled", current_turn, "server already done (102)")
+            if any(err in str(e) for err in ("102", "394", "1503")):
+                self._log("race_end_reconciled", current_turn, f"server already done ({e})")
             else:
                 raise
 
         try:
             out_res = client.race_out(current_turn=current_turn)
             out = out_res
+            print(f"[t{current_turn}] race_out", flush=True)
             if strategy:
                 out_data = out.get("data") or {}
                 if out_data.get("unchecked_event_array"):
@@ -1296,3 +1373,5 @@ class CareerRunner:
             with self.lock:
                 dh = self.status.setdefault("date_history", [])
                 sh = self.status.setdefault("score_history", [])
+                dh.append(turn)
+                sh.append(max_score)

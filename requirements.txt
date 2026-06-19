@@ -6,3 +6,4 @@ pydantic==2.13.4
 Requests==2.33.1
 uvicorn==0.18.2
 curl_cffi==0.7.4
+scipy>=1.10.0

@@ -1,0 +1,3946 @@
+{
+  "careers": [
+    {
+      "card_id": "100401",
+      "chara_name": "Maruzensky",
+      "preset": "xguri parent",
+      "running_style": 2,
+      "date": "2026-06-04",
+      "started_at": "2026-06-04T08:26:05",
+      "fans_gained": 639605,
+      "final_fans": 639606,
+      "final_turn": 76,
+      "finished": false,
+      "final_stats": {
+        "speed": 963,
+        "stamina": 467,
+        "power": 612,
+        "guts": 585,
+        "wit": 984
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "",
+      "chara_name": "",
+      "preset": "xguri parent",
+      "running_style": 2,
+      "date": "2026-06-04",
+      "started_at": "2026-06-04T09:21:27",
+      "fans_gained": 0,
+      "final_fans": 0,
+      "final_turn": 0,
+      "finished": false,
+      "final_stats": {
+        "speed": 0,
+        "stamina": 0,
+        "power": 0,
+        "guts": 0,
+        "wit": 0
+      },
+      "grade": "G"
+    },
+    {
+      "card_id": "",
+      "chara_name": "",
+      "preset": "xguri parent",
+      "running_style": 2,
+      "date": "2026-06-04",
+      "started_at": "2026-06-04T09:21:37",
+      "fans_gained": 0,
+      "final_fans": 0,
+      "final_turn": 0,
+      "finished": false,
+      "final_stats": {
+        "speed": 0,
+        "stamina": 0,
+        "power": 0,
+        "guts": 0,
+        "wit": 0
+      },
+      "grade": "G"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "xguri parent",
+      "running_style": 2,
+      "date": "2026-06-04",
+      "started_at": "2026-06-04T12:21:52",
+      "fans_gained": 819164,
+      "final_fans": 819165,
+      "final_turn": 76,
+      "finished": false,
+      "final_stats": {
+        "speed": 1105,
+        "stamina": 555,
+        "power": 834,
+        "guts": 436,
+        "wit": 697
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "101001",
+      "chara_name": "Taiki Shuttle",
+      "preset": "xguri parent",
+      "running_style": 2,
+      "date": "2026-06-04",
+      "started_at": "2026-06-04T13:34:49",
+      "fans_gained": 287816,
+      "final_fans": 287817,
+      "final_turn": 76,
+      "finished": false,
+      "final_stats": {
+        "speed": 772,
+        "stamina": 288,
+        "power": 880,
+        "guts": 545,
+        "wit": 760
+      },
+      "grade": "A"
+    },
+    {
+      "card_id": "101001",
+      "chara_name": "Taiki Shuttle",
+      "preset": "xguri parent",
+      "running_style": 2,
+      "date": "2026-06-04",
+      "started_at": "2026-06-04T13:46:09",
+      "fans_gained": 64350,
+      "final_fans": 352167,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 827,
+        "stamina": 338,
+        "power": 930,
+        "guts": 595,
+        "wit": 828
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "102801",
+      "chara_name": "Hishi Akebono",
+      "preset": "Pace chaser",
+      "running_style": 0,
+      "date": "2026-06-04",
+      "started_at": "2026-06-04T16:00:44",
+      "fans_gained": 354279,
+      "final_fans": 354280,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 726,
+        "stamina": 424,
+        "power": 735,
+        "guts": 461,
+        "wit": 945
+      },
+      "grade": "A"
+    },
+    {
+      "card_id": "102801",
+      "chara_name": "Hishi Akebono",
+      "preset": "Pace chaser",
+      "running_style": 0,
+      "date": "2026-06-04",
+      "started_at": "2026-06-04T16:10:11",
+      "fans_gained": 290607,
+      "final_fans": 290608,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 697,
+        "stamina": 426,
+        "power": 703,
+        "guts": 452,
+        "wit": 881
+      },
+      "grade": "A"
+    },
+    {
+      "card_id": "102801",
+      "chara_name": "Hishi Akebono",
+      "preset": "Pace chaser",
+      "running_style": 0,
+      "date": "2026-06-04",
+      "started_at": "2026-06-04T16:19:05",
+      "fans_gained": 386401,
+      "final_fans": 386402,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 717,
+        "stamina": 518,
+        "power": 761,
+        "guts": 402,
+        "wit": 1158
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "102801",
+      "chara_name": "Hishi Akebono",
+      "preset": "Pace chaser",
+      "running_style": 0,
+      "date": "2026-06-04",
+      "started_at": "2026-06-04T16:28:35",
+      "fans_gained": 578971,
+      "final_fans": 578972,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 814,
+        "stamina": 573,
+        "power": 758,
+        "guts": 501,
+        "wit": 1200
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "102801",
+      "chara_name": "Hishi Akebono",
+      "preset": "Pace chaser",
+      "running_style": 0,
+      "date": "2026-06-04",
+      "started_at": "2026-06-04T16:38:58",
+      "fans_gained": 388907,
+      "final_fans": 388908,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 984,
+        "stamina": 392,
+        "power": 829,
+        "guts": 473,
+        "wit": 963
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "102701",
+      "chara_name": "Mejiro Ryan",
+      "preset": "Pace chaser",
+      "running_style": 0,
+      "date": "2026-06-05",
+      "started_at": "2026-06-05T15:33:30",
+      "fans_gained": 630275,
+      "final_fans": 630276,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1012,
+        "stamina": 556,
+        "power": 811,
+        "guts": 516,
+        "wit": 980
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "102701",
+      "chara_name": "Mejiro Ryan",
+      "preset": "Pace chaser",
+      "running_style": 0,
+      "date": "2026-06-05",
+      "started_at": "2026-06-05T16:01:10",
+      "fans_gained": 625687,
+      "final_fans": 625688,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 832,
+        "stamina": 763,
+        "power": 764,
+        "guts": 560,
+        "wit": 874
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "100401",
+      "chara_name": "Maruzensky",
+      "preset": "Pace chaser",
+      "running_style": 0,
+      "date": "2026-06-06",
+      "started_at": "2026-06-06T12:18:13",
+      "fans_gained": 532289,
+      "final_fans": 635024,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 986,
+        "stamina": 563,
+        "power": 748,
+        "guts": 462,
+        "wit": 976
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "Pace chaser",
+      "running_style": 0,
+      "date": "2026-06-07",
+      "started_at": "2026-06-07T19:15:11",
+      "fans_gained": 716015,
+      "final_fans": 716016,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 998,
+        "stamina": 530,
+        "power": 959,
+        "guts": 574,
+        "wit": 980
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "Pace chaser",
+      "running_style": 0,
+      "date": "2026-06-07",
+      "started_at": "2026-06-07T19:24:56",
+      "fans_gained": 738473,
+      "final_fans": 738474,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1098,
+        "stamina": 622,
+        "power": 1041,
+        "guts": 535,
+        "wit": 941
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "Pace chaser",
+      "running_style": 0,
+      "date": "2026-06-07",
+      "started_at": "2026-06-07T20:55:25",
+      "fans_gained": 731374,
+      "final_fans": 731375,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1129,
+        "stamina": 649,
+        "power": 1049,
+        "guts": 600,
+        "wit": 863
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "Pace chaser",
+      "running_style": 0,
+      "date": "2026-06-07",
+      "started_at": "2026-06-07T21:04:56",
+      "fans_gained": 666398,
+      "final_fans": 666399,
+      "final_turn": 76,
+      "finished": false,
+      "final_stats": {
+        "speed": 1110,
+        "stamina": 492,
+        "power": 956,
+        "guts": 472,
+        "wit": 802
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "Pace chaser",
+      "running_style": 0,
+      "date": "2026-06-07",
+      "started_at": "2026-06-07T21:56:34",
+      "fans_gained": 67689,
+      "final_fans": 734088,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1184,
+        "stamina": 535,
+        "power": 1014,
+        "guts": 515,
+        "wit": 845
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "Pace chaser",
+      "running_style": 0,
+      "date": "2026-06-07",
+      "started_at": "2026-06-07T21:56:59",
+      "fans_gained": 604359,
+      "final_fans": 604360,
+      "final_turn": 74,
+      "finished": false,
+      "final_stats": {
+        "speed": 980,
+        "stamina": 443,
+        "power": 987,
+        "guts": 526,
+        "wit": 774
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "Pace chaser",
+      "running_style": 0,
+      "date": "2026-06-07",
+      "started_at": "2026-06-07T22:06:03",
+      "fans_gained": 22563,
+      "final_fans": 626923,
+      "final_turn": 76,
+      "finished": false,
+      "final_stats": {
+        "speed": 1000,
+        "stamina": 463,
+        "power": 1007,
+        "guts": 546,
+        "wit": 794
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "",
+      "chara_name": "",
+      "preset": "Pace chaser",
+      "running_style": 0,
+      "date": "2026-06-07",
+      "started_at": "2026-06-07T22:06:15",
+      "fans_gained": 0,
+      "final_fans": 0,
+      "final_turn": 0,
+      "finished": false,
+      "final_stats": {
+        "speed": 0,
+        "stamina": 0,
+        "power": 0,
+        "guts": 0,
+        "wit": 0
+      },
+      "grade": "G"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "Pace chaser",
+      "running_style": 0,
+      "date": "2026-06-08",
+      "started_at": "2026-06-08T02:01:22",
+      "fans_gained": 0,
+      "final_fans": 1,
+      "final_turn": 1,
+      "finished": false,
+      "final_stats": {
+        "speed": 133,
+        "stamina": 74,
+        "power": 206,
+        "guts": 94,
+        "wit": 213
+      },
+      "grade": "F"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "Pace chaser",
+      "running_style": 0,
+      "date": "2026-06-08",
+      "started_at": "2026-06-08T03:38:41",
+      "fans_gained": 0,
+      "final_fans": 1,
+      "final_turn": 2,
+      "finished": false,
+      "final_stats": {
+        "speed": 112,
+        "stamina": 74,
+        "power": 192,
+        "guts": 99,
+        "wit": 234
+      },
+      "grade": "F"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "Pace chaser",
+      "running_style": 0,
+      "date": "2026-06-08",
+      "started_at": "2026-06-08T11:14:23",
+      "fans_gained": 56569,
+      "final_fans": 56570,
+      "final_turn": 30,
+      "finished": false,
+      "final_stats": {
+        "speed": 281,
+        "stamina": 163,
+        "power": 378,
+        "guts": 240,
+        "wit": 396
+      },
+      "grade": "E"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "Pace chaser",
+      "running_style": 0,
+      "date": "2026-06-08",
+      "started_at": "2026-06-08T11:32:39",
+      "fans_gained": 34006,
+      "final_fans": 90576,
+      "final_turn": 31,
+      "finished": false,
+      "final_stats": {
+        "speed": 332,
+        "stamina": 198,
+        "power": 466,
+        "guts": 267,
+        "wit": 431
+      },
+      "grade": "D"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "Pace chaser",
+      "running_style": 0,
+      "date": "2026-06-08",
+      "started_at": "2026-06-08T11:35:44",
+      "fans_gained": 572239,
+      "final_fans": 662815,
+      "final_turn": 76,
+      "finished": false,
+      "final_stats": {
+        "speed": 808,
+        "stamina": 449,
+        "power": 903,
+        "guts": 584,
+        "wit": 898
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "Pace chaser",
+      "running_style": 0,
+      "date": "2026-06-08",
+      "started_at": "2026-06-08T12:06:17",
+      "fans_gained": 65205,
+      "final_fans": 728020,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 858,
+        "stamina": 495,
+        "power": 949,
+        "guts": 630,
+        "wit": 956
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "Pace chaser",
+      "running_style": 0,
+      "date": "2026-06-08",
+      "started_at": "2026-06-08T12:06:38",
+      "fans_gained": 218494,
+      "final_fans": 218495,
+      "final_turn": 36,
+      "finished": false,
+      "final_stats": {
+        "speed": 419,
+        "stamina": 267,
+        "power": 448,
+        "guts": 313,
+        "wit": 520
+      },
+      "grade": "D"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "Pace chaser",
+      "running_style": 0,
+      "date": "2026-06-08",
+      "started_at": "2026-06-08T12:09:51",
+      "fans_gained": 469298,
+      "final_fans": 687793,
+      "final_turn": 76,
+      "finished": false,
+      "final_stats": {
+        "speed": 1133,
+        "stamina": 535,
+        "power": 1096,
+        "guts": 525,
+        "wit": 980
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "",
+      "chara_name": "",
+      "preset": "Pace chaser",
+      "running_style": 0,
+      "date": "2026-06-08",
+      "started_at": "2026-06-08T12:13:51",
+      "fans_gained": 0,
+      "final_fans": 0,
+      "final_turn": 0,
+      "finished": false,
+      "final_stats": {
+        "speed": 0,
+        "stamina": 0,
+        "power": 0,
+        "guts": 0,
+        "wit": 0
+      },
+      "grade": "G"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "Pace chaser",
+      "running_style": 0,
+      "date": "2026-06-08",
+      "started_at": "2026-06-08T13:40:09",
+      "fans_gained": 68931,
+      "final_fans": 756724,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1200,
+        "stamina": 578,
+        "power": 1157,
+        "guts": 568,
+        "wit": 1023
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "Pace chaser",
+      "running_style": 0,
+      "date": "2026-06-08",
+      "started_at": "2026-06-08T13:40:31",
+      "fans_gained": 684998,
+      "final_fans": 684999,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1044,
+        "stamina": 499,
+        "power": 876,
+        "guts": 603,
+        "wit": 972
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "Pace chaser",
+      "running_style": 0,
+      "date": "2026-06-08",
+      "started_at": "2026-06-08T13:47:07",
+      "fans_gained": 0,
+      "final_fans": 1,
+      "final_turn": 5,
+      "finished": false,
+      "final_stats": {
+        "speed": 116,
+        "stamina": 74,
+        "power": 150,
+        "guts": 104,
+        "wit": 234
+      },
+      "grade": "F"
+    },
+    {
+      "card_id": "100701",
+      "chara_name": "Gold Ship",
+      "preset": "End",
+      "running_style": 4,
+      "date": "2026-06-08",
+      "started_at": "2026-06-08T15:42:47",
+      "fans_gained": 1527,
+      "final_fans": 1528,
+      "final_turn": 23,
+      "finished": false,
+      "final_stats": {
+        "speed": 228,
+        "stamina": 177,
+        "power": 351,
+        "guts": 127,
+        "wit": 300
+      },
+      "grade": "E"
+    },
+    {
+      "card_id": "100701",
+      "chara_name": "Gold Ship",
+      "preset": "End",
+      "running_style": 4,
+      "date": "2026-06-08",
+      "started_at": "2026-06-08T15:45:33",
+      "fans_gained": 583128,
+      "final_fans": 584656,
+      "final_turn": 77,
+      "finished": false,
+      "final_stats": {
+        "speed": 945,
+        "stamina": 568,
+        "power": 1000,
+        "guts": 403,
+        "wit": 916
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "",
+      "chara_name": "",
+      "preset": "End",
+      "running_style": 4,
+      "date": "2026-06-08",
+      "started_at": "2026-06-08T15:50:45",
+      "fans_gained": 0,
+      "final_fans": 0,
+      "final_turn": 0,
+      "finished": false,
+      "final_stats": {
+        "speed": 0,
+        "stamina": 0,
+        "power": 0,
+        "guts": 0,
+        "wit": 0
+      },
+      "grade": "G"
+    },
+    {
+      "card_id": "",
+      "chara_name": "",
+      "preset": "End",
+      "running_style": 4,
+      "date": "2026-06-08",
+      "started_at": "2026-06-08T15:50:50",
+      "fans_gained": 0,
+      "final_fans": 0,
+      "final_turn": 0,
+      "finished": false,
+      "final_stats": {
+        "speed": 0,
+        "stamina": 0,
+        "power": 0,
+        "guts": 0,
+        "wit": 0
+      },
+      "grade": "G"
+    },
+    {
+      "card_id": "100201",
+      "chara_name": "Silence Suzuka",
+      "preset": "End",
+      "running_style": 4,
+      "date": "2026-06-08",
+      "started_at": "2026-06-08T16:24:56",
+      "fans_gained": 0,
+      "final_fans": 1688,
+      "final_turn": 18,
+      "finished": false,
+      "final_stats": {
+        "speed": 261,
+        "stamina": 180,
+        "power": 310,
+        "guts": 127,
+        "wit": 252
+      },
+      "grade": "E"
+    },
+    {
+      "card_id": "100701",
+      "chara_name": "Gold Ship",
+      "preset": "End",
+      "running_style": 4,
+      "date": "2026-06-08",
+      "started_at": "2026-06-08T16:40:20",
+      "fans_gained": 0,
+      "final_fans": 1,
+      "final_turn": 6,
+      "finished": false,
+      "final_stats": {
+        "speed": 126,
+        "stamina": 126,
+        "power": 259,
+        "guts": 99,
+        "wit": 174
+      },
+      "grade": "F"
+    },
+    {
+      "card_id": "100701",
+      "chara_name": "Gold Ship",
+      "preset": "End",
+      "running_style": 4,
+      "date": "2026-06-08",
+      "started_at": "2026-06-08T19:34:41",
+      "fans_gained": 631950,
+      "final_fans": 633978,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1020,
+        "stamina": 585,
+        "power": 941,
+        "guts": 541,
+        "wit": 882
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "End",
+      "running_style": 4,
+      "date": "2026-06-08",
+      "started_at": "2026-06-08T21:52:46",
+      "fans_gained": 627334,
+      "final_fans": 627335,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1200,
+        "stamina": 554,
+        "power": 1054,
+        "guts": 472,
+        "wit": 1002
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "Pace chaser",
+      "running_style": 0,
+      "date": "2026-06-09",
+      "started_at": "2026-06-09T00:18:42",
+      "fans_gained": 388369,
+      "final_fans": 388370,
+      "final_turn": 57,
+      "finished": false,
+      "final_stats": {
+        "speed": 719,
+        "stamina": 366,
+        "power": 676,
+        "guts": 446,
+        "wit": 744
+      },
+      "grade": "B"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "Pace chaser",
+      "running_style": 0,
+      "date": "2026-06-09",
+      "started_at": "2026-06-09T00:37:03",
+      "fans_gained": 0,
+      "final_fans": 388370,
+      "final_turn": 57,
+      "finished": false,
+      "final_stats": {
+        "speed": 322,
+        "stamina": 204,
+        "power": 681,
+        "guts": 153,
+        "wit": 0
+      },
+      "grade": "E"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "Pace chaser",
+      "running_style": 0,
+      "date": "2026-06-09",
+      "started_at": "2026-06-09T00:42:00",
+      "fans_gained": 500,
+      "final_fans": 413213,
+      "final_turn": 59,
+      "finished": false,
+      "final_stats": {
+        "speed": 739,
+        "stamina": 378,
+        "power": 681,
+        "guts": 446,
+        "wit": 749
+      },
+      "grade": "B"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "Pace chaser",
+      "running_style": 0,
+      "date": "2026-06-09",
+      "started_at": "2026-06-09T00:42:23",
+      "fans_gained": 321021,
+      "final_fans": 734234,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1193,
+        "stamina": 516,
+        "power": 1046,
+        "guts": 621,
+        "wit": 932
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "Pace chaser",
+      "running_style": 0,
+      "date": "2026-06-09",
+      "started_at": "2026-06-09T09:49:47",
+      "fans_gained": 703332,
+      "final_fans": 703333,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1086,
+        "stamina": 572,
+        "power": 916,
+        "guts": 563,
+        "wit": 840
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "Pace chaser",
+      "running_style": 0,
+      "date": "2026-06-09",
+      "started_at": "2026-06-09T09:56:57",
+      "fans_gained": 661573,
+      "final_fans": 661574,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1200,
+        "stamina": 445,
+        "power": 907,
+        "guts": 604,
+        "wit": 1085
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "Pace chaser",
+      "running_style": 0,
+      "date": "2026-06-09",
+      "started_at": "2026-06-09T10:02:59",
+      "fans_gained": 681524,
+      "final_fans": 681525,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1011,
+        "stamina": 519,
+        "power": 830,
+        "guts": 583,
+        "wit": 1115
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "Pace chaser",
+      "running_style": 0,
+      "date": "2026-06-09",
+      "started_at": "2026-06-09T10:09:03",
+      "fans_gained": 8052,
+      "final_fans": 8053,
+      "final_turn": 17,
+      "finished": false,
+      "final_stats": {
+        "speed": 283,
+        "stamina": 95,
+        "power": 267,
+        "guts": 118,
+        "wit": 327
+      },
+      "grade": "E"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "Pace chaser",
+      "running_style": 0,
+      "date": "2026-06-09",
+      "started_at": "2026-06-09T11:03:43",
+      "fans_gained": 6673,
+      "final_fans": 14726,
+      "final_turn": 19,
+      "finished": false,
+      "final_stats": {
+        "speed": 288,
+        "stamina": 95,
+        "power": 294,
+        "guts": 135,
+        "wit": 0
+      },
+      "grade": "F"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "Pace chaser",
+      "running_style": 0,
+      "date": "2026-06-09",
+      "started_at": "2026-06-09T11:09:00",
+      "fans_gained": 0,
+      "final_fans": 22330,
+      "final_turn": 19,
+      "finished": false,
+      "final_stats": {
+        "speed": 294,
+        "stamina": 121,
+        "power": 314,
+        "guts": 176,
+        "wit": 0
+      },
+      "grade": "F"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "Pace chaser",
+      "running_style": 0,
+      "date": "2026-06-09",
+      "started_at": "2026-06-09T11:22:03",
+      "fans_gained": 0,
+      "final_fans": 22330,
+      "final_turn": 19,
+      "finished": false,
+      "final_stats": {
+        "speed": 294,
+        "stamina": 121,
+        "power": 314,
+        "guts": 176,
+        "wit": 339
+      },
+      "grade": "E"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "Pace chaser",
+      "running_style": 0,
+      "date": "2026-06-09",
+      "started_at": "2026-06-09T11:33:11",
+      "fans_gained": 0,
+      "final_fans": 22330,
+      "final_turn": 19,
+      "finished": false,
+      "final_stats": {
+        "speed": 294,
+        "stamina": 121,
+        "power": 314,
+        "guts": 176,
+        "wit": 339
+      },
+      "grade": "E"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "Pace chaser",
+      "running_style": 0,
+      "date": "2026-06-09",
+      "started_at": "2026-06-09T11:33:24",
+      "fans_gained": 0,
+      "final_fans": 22330,
+      "final_turn": 19,
+      "finished": false,
+      "final_stats": {
+        "speed": 294,
+        "stamina": 121,
+        "power": 314,
+        "guts": 176,
+        "wit": 339
+      },
+      "grade": "E"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "Pace chaser",
+      "running_style": 0,
+      "date": "2026-06-09",
+      "started_at": "2026-06-09T11:33:35",
+      "fans_gained": 0,
+      "final_fans": 22330,
+      "final_turn": 19,
+      "finished": false,
+      "final_stats": {
+        "speed": 294,
+        "stamina": 121,
+        "power": 314,
+        "guts": 176,
+        "wit": 339
+      },
+      "grade": "E"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "Pace chaser",
+      "running_style": 0,
+      "date": "2026-06-09",
+      "started_at": "2026-06-09T11:33:42",
+      "fans_gained": 0,
+      "final_fans": 22330,
+      "final_turn": 19,
+      "finished": false,
+      "final_stats": {
+        "speed": 294,
+        "stamina": 121,
+        "power": 314,
+        "guts": 176,
+        "wit": 339
+      },
+      "grade": "E"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "Pace chaser",
+      "running_style": 0,
+      "date": "2026-06-09",
+      "started_at": "2026-06-09T11:40:33",
+      "fans_gained": 0,
+      "final_fans": 22330,
+      "final_turn": 19,
+      "finished": false,
+      "final_stats": {
+        "speed": 294,
+        "stamina": 121,
+        "power": 314,
+        "guts": 176,
+        "wit": 339
+      },
+      "grade": "E"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "Pace chaser",
+      "running_style": 0,
+      "date": "2026-06-09",
+      "started_at": "2026-06-09T11:40:42",
+      "fans_gained": 0,
+      "final_fans": 22330,
+      "final_turn": 19,
+      "finished": false,
+      "final_stats": {
+        "speed": 294,
+        "stamina": 121,
+        "power": 314,
+        "guts": 176,
+        "wit": 339
+      },
+      "grade": "E"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "Pace chaser",
+      "running_style": 0,
+      "date": "2026-06-09",
+      "started_at": "2026-06-09T11:40:48",
+      "fans_gained": 0,
+      "final_fans": 22330,
+      "final_turn": 19,
+      "finished": false,
+      "final_stats": {
+        "speed": 294,
+        "stamina": 121,
+        "power": 314,
+        "guts": 176,
+        "wit": 339
+      },
+      "grade": "E"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "Pace chaser",
+      "running_style": 0,
+      "date": "2026-06-09",
+      "started_at": "2026-06-09T14:42:12",
+      "fans_gained": 690427,
+      "final_fans": 690428,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1145,
+        "stamina": 487,
+        "power": 974,
+        "guts": 684,
+        "wit": 1005
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "Pace chaser",
+      "running_style": 0,
+      "date": "2026-06-09",
+      "started_at": "2026-06-09T15:55:18",
+      "fans_gained": 723830,
+      "final_fans": 723831,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1200,
+        "stamina": 554,
+        "power": 1200,
+        "guts": 560,
+        "wit": 849
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "Pace chaser",
+      "running_style": 0,
+      "date": "2026-06-09",
+      "started_at": "2026-06-09T16:22:14",
+      "fans_gained": 704564,
+      "final_fans": 704565,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1022,
+        "stamina": 480,
+        "power": 906,
+        "guts": 616,
+        "wit": 1060
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "Pace chaser",
+      "running_style": 0,
+      "date": "2026-06-10",
+      "started_at": "2026-06-10T12:42:58",
+      "fans_gained": 605873,
+      "final_fans": 605874,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 966,
+        "stamina": 494,
+        "power": 796,
+        "guts": 536,
+        "wit": 1200
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "Pace chaser",
+      "running_style": 0,
+      "date": "2026-06-10",
+      "started_at": "2026-06-10T12:55:31",
+      "fans_gained": 713918,
+      "final_fans": 713919,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1144,
+        "stamina": 527,
+        "power": 952,
+        "guts": 579,
+        "wit": 1200
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "Pace chaser",
+      "running_style": 0,
+      "date": "2026-06-10",
+      "started_at": "2026-06-10T13:03:23",
+      "fans_gained": 618814,
+      "final_fans": 618815,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1047,
+        "stamina": 501,
+        "power": 941,
+        "guts": 518,
+        "wit": 1035
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "Pace chaser",
+      "running_style": 0,
+      "date": "2026-06-10",
+      "started_at": "2026-06-10T13:17:14",
+      "fans_gained": 633468,
+      "final_fans": 633469,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 978,
+        "stamina": 463,
+        "power": 985,
+        "guts": 488,
+        "wit": 949
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "Pace chaser",
+      "running_style": 0,
+      "date": "2026-06-10",
+      "started_at": "2026-06-10T13:28:44",
+      "fans_gained": 646567,
+      "final_fans": 646568,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1090,
+        "stamina": 472,
+        "power": 1031,
+        "guts": 522,
+        "wit": 1033
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "Pace chaser",
+      "running_style": 0,
+      "date": "2026-06-10",
+      "started_at": "2026-06-10T13:40:00",
+      "fans_gained": 652479,
+      "final_fans": 652480,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1114,
+        "stamina": 500,
+        "power": 899,
+        "guts": 470,
+        "wit": 996
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "Pace chaser",
+      "running_style": 0,
+      "date": "2026-06-10",
+      "started_at": "2026-06-10T13:52:15",
+      "fans_gained": 685942,
+      "final_fans": 685943,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 938,
+        "stamina": 559,
+        "power": 901,
+        "guts": 417,
+        "wit": 954
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "Pace chaser",
+      "running_style": 0,
+      "date": "2026-06-10",
+      "started_at": "2026-06-10T14:01:39",
+      "fans_gained": 691263,
+      "final_fans": 691264,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1200,
+        "stamina": 490,
+        "power": 1057,
+        "guts": 513,
+        "wit": 1014
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "Pace chaser",
+      "running_style": 0,
+      "date": "2026-06-10",
+      "started_at": "2026-06-10T14:10:55",
+      "fans_gained": 670492,
+      "final_fans": 670493,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1165,
+        "stamina": 533,
+        "power": 941,
+        "guts": 473,
+        "wit": 1172
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "Pace chaser",
+      "running_style": 0,
+      "date": "2026-06-10",
+      "started_at": "2026-06-10T14:20:15",
+      "fans_gained": 673801,
+      "final_fans": 673802,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1129,
+        "stamina": 499,
+        "power": 1028,
+        "guts": 484,
+        "wit": 938
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "Pace chaser",
+      "running_style": 0,
+      "date": "2026-06-10",
+      "started_at": "2026-06-10T14:31:20",
+      "fans_gained": 180308,
+      "final_fans": 180309,
+      "final_turn": 45,
+      "finished": false,
+      "final_stats": {
+        "speed": 556,
+        "stamina": 229,
+        "power": 455,
+        "guts": 356,
+        "wit": 671
+      },
+      "grade": "C"
+    },
+    {
+      "card_id": "100801",
+      "chara_name": "Vodka",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-10",
+      "started_at": "2026-06-10T22:24:48",
+      "fans_gained": 0,
+      "final_fans": 1,
+      "final_turn": 4,
+      "finished": false,
+      "final_stats": {
+        "speed": 159,
+        "stamina": 112,
+        "power": 236,
+        "guts": 88,
+        "wit": 202
+      },
+      "grade": "F"
+    },
+    {
+      "card_id": "100801",
+      "chara_name": "Vodka",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-10",
+      "started_at": "2026-06-10T22:27:51",
+      "fans_gained": 769304,
+      "final_fans": 769305,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1103,
+        "stamina": 587,
+        "power": 964,
+        "guts": 627,
+        "wit": 1142
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100801",
+      "chara_name": "Vodka",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-11",
+      "started_at": "2026-06-11T10:16:02",
+      "fans_gained": 742737,
+      "final_fans": 742738,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1196,
+        "stamina": 459,
+        "power": 1110,
+        "guts": 520,
+        "wit": 788
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100801",
+      "chara_name": "Vodka",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-11",
+      "started_at": "2026-06-11T10:28:31",
+      "fans_gained": 776384,
+      "final_fans": 776385,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1200,
+        "stamina": 507,
+        "power": 1136,
+        "guts": 502,
+        "wit": 833
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100801",
+      "chara_name": "Vodka",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-11",
+      "started_at": "2026-06-11T11:12:19",
+      "fans_gained": 652508,
+      "final_fans": 652509,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1047,
+        "stamina": 510,
+        "power": 865,
+        "guts": 490,
+        "wit": 904
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "100801",
+      "chara_name": "Vodka",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-11",
+      "started_at": "2026-06-11T11:27:02",
+      "fans_gained": 767079,
+      "final_fans": 767080,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1200,
+        "stamina": 500,
+        "power": 919,
+        "guts": 518,
+        "wit": 1046
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100801",
+      "chara_name": "Vodka",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-11",
+      "started_at": "2026-06-11T11:54:06",
+      "fans_gained": 633950,
+      "final_fans": 633951,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1119,
+        "stamina": 396,
+        "power": 896,
+        "guts": 486,
+        "wit": 943
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "100801",
+      "chara_name": "Vodka",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-11",
+      "started_at": "2026-06-11T19:29:54",
+      "fans_gained": 745614,
+      "final_fans": 745615,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1200,
+        "stamina": 659,
+        "power": 925,
+        "guts": 499,
+        "wit": 671
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "100801",
+      "chara_name": "Vodka",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-11",
+      "started_at": "2026-06-11T19:36:53",
+      "fans_gained": 752734,
+      "final_fans": 752735,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1200,
+        "stamina": 596,
+        "power": 955,
+        "guts": 509,
+        "wit": 826
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100801",
+      "chara_name": "Vodka",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-11",
+      "started_at": "2026-06-11T19:43:38",
+      "fans_gained": 753715,
+      "final_fans": 753716,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1200,
+        "stamina": 565,
+        "power": 998,
+        "guts": 561,
+        "wit": 774
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100801",
+      "chara_name": "Vodka",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-11",
+      "started_at": "2026-06-11T19:50:31",
+      "fans_gained": 752309,
+      "final_fans": 752310,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1200,
+        "stamina": 620,
+        "power": 885,
+        "guts": 532,
+        "wit": 948
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100801",
+      "chara_name": "Vodka",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-11",
+      "started_at": "2026-06-11T19:57:20",
+      "fans_gained": 717535,
+      "final_fans": 717536,
+      "final_turn": 78,
+      "finished": false,
+      "final_stats": {
+        "speed": 1200,
+        "stamina": 595,
+        "power": 943,
+        "guts": 462,
+        "wit": 890
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100801",
+      "chara_name": "Vodka",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-11",
+      "started_at": "2026-06-11T21:58:15",
+      "fans_gained": 705178,
+      "final_fans": 705179,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1039,
+        "stamina": 551,
+        "power": 800,
+        "guts": 607,
+        "wit": 1085
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100801",
+      "chara_name": "Vodka",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-11",
+      "started_at": "2026-06-11T22:07:00",
+      "fans_gained": 0,
+      "final_fans": 1,
+      "final_turn": 1,
+      "finished": false,
+      "final_stats": {
+        "speed": 159,
+        "stamina": 107,
+        "power": 180,
+        "guts": 88,
+        "wit": 228
+      },
+      "grade": "F"
+    },
+    {
+      "card_id": "100801",
+      "chara_name": "Vodka",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-11",
+      "started_at": "2026-06-11T22:07:17",
+      "fans_gained": 733128,
+      "final_fans": 733129,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1035,
+        "stamina": 467,
+        "power": 975,
+        "guts": 553,
+        "wit": 1018
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100801",
+      "chara_name": "Vodka",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-11",
+      "started_at": "2026-06-11T23:02:36",
+      "fans_gained": 748659,
+      "final_fans": 748660,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1200,
+        "stamina": 493,
+        "power": 941,
+        "guts": 484,
+        "wit": 1065
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100801",
+      "chara_name": "Vodka",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-12",
+      "started_at": "2026-06-12T00:01:17",
+      "fans_gained": 759702,
+      "final_fans": 759703,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1161,
+        "stamina": 504,
+        "power": 933,
+        "guts": 622,
+        "wit": 955
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100801",
+      "chara_name": "Vodka",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-12",
+      "started_at": "2026-06-12T11:09:15",
+      "fans_gained": 612,
+      "final_fans": 613,
+      "final_turn": 24,
+      "finished": true,
+      "final_stats": {
+        "speed": 374,
+        "stamina": 145,
+        "power": 318,
+        "guts": 110,
+        "wit": 280
+      },
+      "grade": "E"
+    },
+    {
+      "card_id": "100801",
+      "chara_name": "Vodka",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-12",
+      "started_at": "2026-06-12T11:18:41",
+      "fans_gained": 0,
+      "final_fans": 1,
+      "final_turn": 7,
+      "finished": false,
+      "final_stats": {
+        "speed": 192,
+        "stamina": 114,
+        "power": 190,
+        "guts": 88,
+        "wit": 186
+      },
+      "grade": "F"
+    },
+    {
+      "card_id": "100801",
+      "chara_name": "Vodka",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-12",
+      "started_at": "2026-06-12T11:20:55",
+      "fans_gained": 786870,
+      "final_fans": 786871,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1162,
+        "stamina": 613,
+        "power": 893,
+        "guts": 516,
+        "wit": 922
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100801",
+      "chara_name": "Vodka",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-12",
+      "started_at": "2026-06-12T11:27:21",
+      "fans_gained": 634837,
+      "final_fans": 634838,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1200,
+        "stamina": 472,
+        "power": 878,
+        "guts": 525,
+        "wit": 1016
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100801",
+      "chara_name": "Vodka",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-12",
+      "started_at": "2026-06-12T11:37:44",
+      "fans_gained": 705463,
+      "final_fans": 705464,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1200,
+        "stamina": 612,
+        "power": 961,
+        "guts": 494,
+        "wit": 996
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100801",
+      "chara_name": "Vodka",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-12",
+      "started_at": "2026-06-12T11:45:19",
+      "fans_gained": 708787,
+      "final_fans": 708788,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1200,
+        "stamina": 475,
+        "power": 1019,
+        "guts": 458,
+        "wit": 762
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "100801",
+      "chara_name": "Vodka",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-12",
+      "started_at": "2026-06-12T11:53:43",
+      "fans_gained": 706780,
+      "final_fans": 706781,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1200,
+        "stamina": 480,
+        "power": 947,
+        "guts": 492,
+        "wit": 854
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "100801",
+      "chara_name": "Vodka",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-12",
+      "started_at": "2026-06-12T12:01:01",
+      "fans_gained": 671375,
+      "final_fans": 671376,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1200,
+        "stamina": 532,
+        "power": 945,
+        "guts": 440,
+        "wit": 794
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "100801",
+      "chara_name": "Vodka",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-12",
+      "started_at": "2026-06-12T12:10:38",
+      "fans_gained": 688628,
+      "final_fans": 688629,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1192,
+        "stamina": 444,
+        "power": 850,
+        "guts": 517,
+        "wit": 895
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "100801",
+      "chara_name": "Vodka",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-12",
+      "started_at": "2026-06-12T12:20:48",
+      "fans_gained": 559072,
+      "final_fans": 559073,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1181,
+        "stamina": 457,
+        "power": 875,
+        "guts": 413,
+        "wit": 750
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "100801",
+      "chara_name": "Vodka",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-12",
+      "started_at": "2026-06-12T12:35:37",
+      "fans_gained": 669743,
+      "final_fans": 669744,
+      "final_turn": 78,
+      "finished": false,
+      "final_stats": {
+        "speed": 1066,
+        "stamina": 439,
+        "power": 827,
+        "guts": 492,
+        "wit": 905
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "100801",
+      "chara_name": "Vodka",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-13",
+      "started_at": "2026-06-13T01:55:46",
+      "fans_gained": 708559,
+      "final_fans": 708560,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1195,
+        "stamina": 605,
+        "power": 890,
+        "guts": 645,
+        "wit": 1018
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100801",
+      "chara_name": "Vodka",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-13",
+      "started_at": "2026-06-13T16:30:05",
+      "fans_gained": 0,
+      "final_fans": 111364,
+      "final_turn": 34,
+      "finished": false,
+      "final_stats": {
+        "speed": 472,
+        "stamina": 207,
+        "power": 384,
+        "guts": 221,
+        "wit": 438
+      },
+      "grade": "D"
+    },
+    {
+      "card_id": "100801",
+      "chara_name": "Vodka",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-13",
+      "started_at": "2026-06-13T16:30:15",
+      "fans_gained": 81549,
+      "final_fans": 192913,
+      "final_turn": 44,
+      "finished": false,
+      "final_stats": {
+        "speed": 614,
+        "stamina": 297,
+        "power": 490,
+        "guts": 243,
+        "wit": 508
+      },
+      "grade": "C"
+    },
+    {
+      "card_id": "100801",
+      "chara_name": "Vodka",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-13",
+      "started_at": "2026-06-13T16:36:52",
+      "fans_gained": 474480,
+      "final_fans": 676169,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1154,
+        "stamina": 563,
+        "power": 885,
+        "guts": 547,
+        "wit": 874
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100801",
+      "chara_name": "Vodka",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-13",
+      "started_at": "2026-06-13T16:40:15",
+      "fans_gained": 704466,
+      "final_fans": 704467,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1163,
+        "stamina": 565,
+        "power": 1003,
+        "guts": 523,
+        "wit": 1070
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100801",
+      "chara_name": "Vodka",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-13",
+      "started_at": "2026-06-13T16:46:29",
+      "fans_gained": 679507,
+      "final_fans": 679508,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1040,
+        "stamina": 556,
+        "power": 794,
+        "guts": 546,
+        "wit": 1061
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "100801",
+      "chara_name": "Vodka",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-13",
+      "started_at": "2026-06-13T16:54:49",
+      "fans_gained": 631,
+      "final_fans": 632,
+      "final_turn": 24,
+      "finished": true,
+      "final_stats": {
+        "speed": 384,
+        "stamina": 144,
+        "power": 297,
+        "guts": 118,
+        "wit": 381
+      },
+      "grade": "E"
+    },
+    {
+      "card_id": "100801",
+      "chara_name": "Vodka",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-13",
+      "started_at": "2026-06-13T17:03:59",
+      "fans_gained": 659158,
+      "final_fans": 659159,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 970,
+        "stamina": 523,
+        "power": 929,
+        "guts": 541,
+        "wit": 864
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "100801",
+      "chara_name": "Vodka",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-13",
+      "started_at": "2026-06-13T17:14:21",
+      "fans_gained": 660399,
+      "final_fans": 660400,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1199,
+        "stamina": 616,
+        "power": 998,
+        "guts": 452,
+        "wit": 790
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100801",
+      "chara_name": "Vodka",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-13",
+      "started_at": "2026-06-13T17:24:22",
+      "fans_gained": 678708,
+      "final_fans": 678709,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1100,
+        "stamina": 455,
+        "power": 884,
+        "guts": 484,
+        "wit": 1114
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100801",
+      "chara_name": "Vodka",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-13",
+      "started_at": "2026-06-13T17:33:51",
+      "fans_gained": 612001,
+      "final_fans": 612002,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1146,
+        "stamina": 565,
+        "power": 976,
+        "guts": 524,
+        "wit": 936
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100801",
+      "chara_name": "Vodka",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-13",
+      "started_at": "2026-06-13T17:45:10",
+      "fans_gained": 631242,
+      "final_fans": 631243,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1095,
+        "stamina": 581,
+        "power": 902,
+        "guts": 510,
+        "wit": 961
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100801",
+      "chara_name": "Vodka",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-13",
+      "started_at": "2026-06-13T17:55:21",
+      "fans_gained": 671529,
+      "final_fans": 671530,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1065,
+        "stamina": 494,
+        "power": 856,
+        "guts": 545,
+        "wit": 1143
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100801",
+      "chara_name": "Vodka",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-13",
+      "started_at": "2026-06-13T18:04:36",
+      "fans_gained": 638067,
+      "final_fans": 638068,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1144,
+        "stamina": 600,
+        "power": 901,
+        "guts": 562,
+        "wit": 973
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100801",
+      "chara_name": "Vodka",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-13",
+      "started_at": "2026-06-13T18:16:43",
+      "fans_gained": 631026,
+      "final_fans": 631027,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1149,
+        "stamina": 605,
+        "power": 803,
+        "guts": 492,
+        "wit": 1013
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100801",
+      "chara_name": "Vodka",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-13",
+      "started_at": "2026-06-13T18:28:49",
+      "fans_gained": 623612,
+      "final_fans": 623613,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1199,
+        "stamina": 579,
+        "power": 776,
+        "guts": 534,
+        "wit": 1051
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100801",
+      "chara_name": "Vodka",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-13",
+      "started_at": "2026-06-13T18:39:56",
+      "fans_gained": 621802,
+      "final_fans": 621803,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1144,
+        "stamina": 566,
+        "power": 852,
+        "guts": 483,
+        "wit": 967
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100801",
+      "chara_name": "Vodka",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-13",
+      "started_at": "2026-06-13T18:52:09",
+      "fans_gained": 35460,
+      "final_fans": 35461,
+      "final_turn": 23,
+      "finished": false,
+      "final_stats": {
+        "speed": 331,
+        "stamina": 156,
+        "power": 232,
+        "guts": 140,
+        "wit": 307
+      },
+      "grade": "E"
+    },
+    {
+      "card_id": "100502",
+      "chara_name": "Fuji Kiseki (Alt)",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-14",
+      "started_at": "2026-06-14T12:50:15",
+      "fans_gained": 714824,
+      "final_fans": 714825,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1182,
+        "stamina": 588,
+        "power": 975,
+        "guts": 570,
+        "wit": 879
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100502",
+      "chara_name": "Fuji Kiseki (Alt)",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-14",
+      "started_at": "2026-06-14T13:10:16",
+      "fans_gained": 626239,
+      "final_fans": 626240,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1200,
+        "stamina": 517,
+        "power": 775,
+        "guts": 536,
+        "wit": 1050
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100502",
+      "chara_name": "Fuji Kiseki (Alt)",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-14",
+      "started_at": "2026-06-14T13:22:55",
+      "fans_gained": 464744,
+      "final_fans": 464745,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 906,
+        "stamina": 438,
+        "power": 730,
+        "guts": 469,
+        "wit": 983
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "100502",
+      "chara_name": "Fuji Kiseki (Alt)",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-14",
+      "started_at": "2026-06-14T13:44:36",
+      "fans_gained": 637549,
+      "final_fans": 637550,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 940,
+        "stamina": 512,
+        "power": 787,
+        "guts": 511,
+        "wit": 1105
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "100502",
+      "chara_name": "Fuji Kiseki (Alt)",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-14",
+      "started_at": "2026-06-14T13:59:11",
+      "fans_gained": 580256,
+      "final_fans": 580257,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1098,
+        "stamina": 530,
+        "power": 793,
+        "guts": 456,
+        "wit": 1029
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "100502",
+      "chara_name": "Fuji Kiseki (Alt)",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-14",
+      "started_at": "2026-06-14T14:14:54",
+      "fans_gained": 521855,
+      "final_fans": 521856,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1058,
+        "stamina": 480,
+        "power": 779,
+        "guts": 499,
+        "wit": 1027
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "100502",
+      "chara_name": "Fuji Kiseki (Alt)",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-14",
+      "started_at": "2026-06-14T14:34:27",
+      "fans_gained": 625372,
+      "final_fans": 625373,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1018,
+        "stamina": 524,
+        "power": 869,
+        "guts": 576,
+        "wit": 988
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "100502",
+      "chara_name": "Fuji Kiseki (Alt)",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-14",
+      "started_at": "2026-06-14T14:47:15",
+      "fans_gained": 680404,
+      "final_fans": 680405,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1105,
+        "stamina": 563,
+        "power": 962,
+        "guts": 484,
+        "wit": 1043
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100502",
+      "chara_name": "Fuji Kiseki (Alt)",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-14",
+      "started_at": "2026-06-14T14:58:10",
+      "fans_gained": 530367,
+      "final_fans": 530368,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 857,
+        "stamina": 526,
+        "power": 725,
+        "guts": 497,
+        "wit": 917
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "100502",
+      "chara_name": "Fuji Kiseki (Alt)",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-14",
+      "started_at": "2026-06-14T15:16:35",
+      "fans_gained": 594070,
+      "final_fans": 594071,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 914,
+        "stamina": 595,
+        "power": 889,
+        "guts": 506,
+        "wit": 781
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "100502",
+      "chara_name": "Fuji Kiseki (Alt)",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-14",
+      "started_at": "2026-06-14T15:30:14",
+      "fans_gained": 639803,
+      "final_fans": 639804,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1118,
+        "stamina": 500,
+        "power": 854,
+        "guts": 546,
+        "wit": 1120
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100502",
+      "chara_name": "Fuji Kiseki (Alt)",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-14",
+      "started_at": "2026-06-14T15:39:59",
+      "fans_gained": 638918,
+      "final_fans": 638919,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1200,
+        "stamina": 506,
+        "power": 823,
+        "guts": 487,
+        "wit": 1144
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100502",
+      "chara_name": "Fuji Kiseki (Alt)",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-14",
+      "started_at": "2026-06-14T15:50:35",
+      "fans_gained": 669305,
+      "final_fans": 669306,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1048,
+        "stamina": 485,
+        "power": 741,
+        "guts": 489,
+        "wit": 1073
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "100502",
+      "chara_name": "Fuji Kiseki (Alt)",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-15",
+      "started_at": "2026-06-15T15:17:54",
+      "fans_gained": 729020,
+      "final_fans": 729021,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1199,
+        "stamina": 543,
+        "power": 1101,
+        "guts": 554,
+        "wit": 902
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100502",
+      "chara_name": "Fuji Kiseki (Alt)",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-15",
+      "started_at": "2026-06-15T15:34:55",
+      "fans_gained": 736759,
+      "final_fans": 736760,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1136,
+        "stamina": 471,
+        "power": 1022,
+        "guts": 520,
+        "wit": 1088
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100502",
+      "chara_name": "Fuji Kiseki (Alt)",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-15",
+      "started_at": "2026-06-15T16:21:07",
+      "fans_gained": 599045,
+      "final_fans": 599046,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1136,
+        "stamina": 562,
+        "power": 912,
+        "guts": 414,
+        "wit": 761
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "100502",
+      "chara_name": "Fuji Kiseki (Alt)",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-16",
+      "started_at": "2026-06-16T11:49:49",
+      "fans_gained": 591983,
+      "final_fans": 591984,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 958,
+        "stamina": 544,
+        "power": 726,
+        "guts": 512,
+        "wit": 1200
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "100502",
+      "chara_name": "Fuji Kiseki (Alt)",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-16",
+      "started_at": "2026-06-16T12:02:35",
+      "fans_gained": 686402,
+      "final_fans": 686403,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1039,
+        "stamina": 676,
+        "power": 888,
+        "guts": 556,
+        "wit": 1032
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100502",
+      "chara_name": "Fuji Kiseki (Alt)",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-16",
+      "started_at": "2026-06-16T12:12:33",
+      "fans_gained": 671989,
+      "final_fans": 671990,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1200,
+        "stamina": 539,
+        "power": 990,
+        "guts": 602,
+        "wit": 929
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100502",
+      "chara_name": "Fuji Kiseki (Alt)",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-16",
+      "started_at": "2026-06-16T12:22:47",
+      "fans_gained": 602731,
+      "final_fans": 602732,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 986,
+        "stamina": 547,
+        "power": 780,
+        "guts": 519,
+        "wit": 1075
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "100502",
+      "chara_name": "Fuji Kiseki (Alt)",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-16",
+      "started_at": "2026-06-16T12:36:48",
+      "fans_gained": 521512,
+      "final_fans": 521513,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 924,
+        "stamina": 548,
+        "power": 810,
+        "guts": 625,
+        "wit": 804
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "100502",
+      "chara_name": "Fuji Kiseki (Alt)",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-16",
+      "started_at": "2026-06-16T12:56:33",
+      "fans_gained": 567408,
+      "final_fans": 567409,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1003,
+        "stamina": 512,
+        "power": 990,
+        "guts": 511,
+        "wit": 742
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "100502",
+      "chara_name": "Fuji Kiseki (Alt)",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-16",
+      "started_at": "2026-06-16T13:13:13",
+      "fans_gained": 637841,
+      "final_fans": 637842,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1069,
+        "stamina": 492,
+        "power": 949,
+        "guts": 629,
+        "wit": 969
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100502",
+      "chara_name": "Fuji Kiseki (Alt)",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-16",
+      "started_at": "2026-06-16T13:24:08",
+      "fans_gained": 575380,
+      "final_fans": 575381,
+      "final_turn": 78,
+      "finished": false,
+      "final_stats": {
+        "speed": 975,
+        "stamina": 450,
+        "power": 709,
+        "guts": 557,
+        "wit": 1040
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "100502",
+      "chara_name": "Fuji Kiseki (Alt)",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-16",
+      "started_at": "2026-06-16T16:21:19",
+      "fans_gained": 0,
+      "final_fans": 575381,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1003,
+        "stamina": 478,
+        "power": 737,
+        "guts": 585,
+        "wit": 1068
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-16",
+      "started_at": "2026-06-16T22:22:22",
+      "fans_gained": 664006,
+      "final_fans": 664007,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1200,
+        "stamina": 431,
+        "power": 973,
+        "guts": 581,
+        "wit": 941
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-16",
+      "started_at": "2026-06-16T22:31:21",
+      "fans_gained": 712831,
+      "final_fans": 712832,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1200,
+        "stamina": 634,
+        "power": 989,
+        "guts": 537,
+        "wit": 900
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-16",
+      "started_at": "2026-06-16T23:41:11",
+      "fans_gained": 599835,
+      "final_fans": 599836,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1129,
+        "stamina": 525,
+        "power": 786,
+        "guts": 610,
+        "wit": 900
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-17",
+      "started_at": "2026-06-17T00:01:31",
+      "fans_gained": 0,
+      "final_fans": 1,
+      "final_turn": 3,
+      "finished": false,
+      "final_stats": {
+        "speed": 145,
+        "stamina": 79,
+        "power": 171,
+        "guts": 106,
+        "wit": 225
+      },
+      "grade": "F"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-17",
+      "started_at": "2026-06-17T00:12:27",
+      "fans_gained": 577113,
+      "final_fans": 577114,
+      "final_turn": 76,
+      "finished": false,
+      "final_stats": {
+        "speed": 1081,
+        "stamina": 461,
+        "power": 733,
+        "guts": 503,
+        "wit": 890
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-17",
+      "started_at": "2026-06-17T00:26:18",
+      "fans_gained": 63342,
+      "final_fans": 640456,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1133,
+        "stamina": 509,
+        "power": 781,
+        "guts": 551,
+        "wit": 952
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-17",
+      "started_at": "2026-06-17T10:40:28",
+      "fans_gained": 0,
+      "final_fans": 1,
+      "final_turn": 1,
+      "finished": false,
+      "final_stats": {
+        "speed": 124,
+        "stamina": 74,
+        "power": 180,
+        "guts": 94,
+        "wit": 0
+      },
+      "grade": "G"
+    },
+    {
+      "card_id": "",
+      "chara_name": "",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-17",
+      "started_at": "2026-06-17T10:49:03",
+      "fans_gained": 0,
+      "final_fans": 0,
+      "final_turn": 0,
+      "finished": false,
+      "final_stats": {
+        "speed": 0,
+        "stamina": 0,
+        "power": 0,
+        "guts": 0,
+        "wit": 0
+      },
+      "grade": "G"
+    },
+    {
+      "card_id": "",
+      "chara_name": "",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-17",
+      "started_at": "2026-06-17T10:55:35",
+      "fans_gained": 0,
+      "final_fans": 0,
+      "final_turn": 0,
+      "finished": false,
+      "final_stats": {
+        "speed": 0,
+        "stamina": 0,
+        "power": 0,
+        "guts": 0,
+        "wit": 0
+      },
+      "grade": "G"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-17",
+      "started_at": "2026-06-17T10:57:12",
+      "fans_gained": 622186,
+      "final_fans": 622187,
+      "final_turn": 76,
+      "finished": false,
+      "final_stats": {
+        "speed": 980,
+        "stamina": 393,
+        "power": 939,
+        "guts": 523,
+        "wit": 829
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-17",
+      "started_at": "2026-06-17T11:05:13",
+      "fans_gained": 62100,
+      "final_fans": 684287,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1023,
+        "stamina": 436,
+        "power": 982,
+        "guts": 566,
+        "wit": 872
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "pace chaser",
+      "running_style": 1,
+      "date": "2026-06-17",
+      "started_at": "2026-06-17T15:43:33",
+      "fans_gained": 2035,
+      "final_fans": 2036,
+      "final_turn": 24,
+      "finished": true,
+      "final_stats": {
+        "speed": 359,
+        "stamina": 170,
+        "power": 293,
+        "guts": 165,
+        "wit": 381
+      },
+      "grade": "E"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "pace chaser",
+      "running_style": 1,
+      "date": "2026-06-17",
+      "started_at": "2026-06-17T15:45:27",
+      "fans_gained": 1507,
+      "final_fans": 1508,
+      "final_turn": 24,
+      "finished": true,
+      "final_stats": {
+        "speed": 357,
+        "stamina": 182,
+        "power": 343,
+        "guts": 168,
+        "wit": 310
+      },
+      "grade": "E"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "pace chaser",
+      "running_style": 1,
+      "date": "2026-06-17",
+      "started_at": "2026-06-17T15:47:06",
+      "fans_gained": 1579,
+      "final_fans": 1580,
+      "final_turn": 24,
+      "finished": true,
+      "final_stats": {
+        "speed": 411,
+        "stamina": 132,
+        "power": 320,
+        "guts": 133,
+        "wit": 381
+      },
+      "grade": "E"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "pace chaser",
+      "running_style": 1,
+      "date": "2026-06-17",
+      "started_at": "2026-06-17T15:48:43",
+      "fans_gained": 1507,
+      "final_fans": 1508,
+      "final_turn": 24,
+      "finished": true,
+      "final_stats": {
+        "speed": 406,
+        "stamina": 118,
+        "power": 303,
+        "guts": 170,
+        "wit": 319
+      },
+      "grade": "E"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "pace chaser",
+      "running_style": 1,
+      "date": "2026-06-17",
+      "started_at": "2026-06-17T15:50:19",
+      "fans_gained": 1535,
+      "final_fans": 1536,
+      "final_turn": 24,
+      "finished": true,
+      "final_stats": {
+        "speed": 348,
+        "stamina": 146,
+        "power": 256,
+        "guts": 143,
+        "wit": 407
+      },
+      "grade": "E"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "pace chaser",
+      "running_style": 1,
+      "date": "2026-06-17",
+      "started_at": "2026-06-17T15:51:51",
+      "fans_gained": 2035,
+      "final_fans": 2036,
+      "final_turn": 22,
+      "finished": false,
+      "final_stats": {
+        "speed": 345,
+        "stamina": 105,
+        "power": 303,
+        "guts": 159,
+        "wit": 324
+      },
+      "grade": "E"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "pace chaser",
+      "running_style": 1,
+      "date": "2026-06-17",
+      "started_at": "2026-06-17T15:54:42",
+      "fans_gained": 602854,
+      "final_fans": 604890,
+      "final_turn": 76,
+      "finished": false,
+      "final_stats": {
+        "speed": 1116,
+        "stamina": 511,
+        "power": 847,
+        "guts": 429,
+        "wit": 835
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "pace chaser",
+      "running_style": 1,
+      "date": "2026-06-17",
+      "started_at": "2026-06-17T16:02:45",
+      "fans_gained": 64584,
+      "final_fans": 669474,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1167,
+        "stamina": 557,
+        "power": 893,
+        "guts": 475,
+        "wit": 907
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "104601",
+      "chara_name": "Smart Falcon",
+      "preset": "pace chaser",
+      "running_style": 1,
+      "date": "2026-06-17",
+      "started_at": "2026-06-17T16:20:48",
+      "fans_gained": 0,
+      "final_fans": 1,
+      "final_turn": 7,
+      "finished": false,
+      "final_stats": {
+        "speed": 160,
+        "stamina": 130,
+        "power": 227,
+        "guts": 121,
+        "wit": 167
+      },
+      "grade": "F"
+    },
+    {
+      "card_id": "104601",
+      "chara_name": "Smart Falcon",
+      "preset": "Front runn",
+      "running_style": 1,
+      "date": "2026-06-17",
+      "started_at": "2026-06-17T16:24:10",
+      "fans_gained": 647165,
+      "final_fans": 647166,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1163,
+        "stamina": 604,
+        "power": 1115,
+        "guts": 628,
+        "wit": 735
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "End",
+      "running_style": 4,
+      "date": "2026-06-18",
+      "started_at": "2026-06-18T00:55:03",
+      "fans_gained": 36471,
+      "final_fans": 36472,
+      "final_turn": 25,
+      "finished": false,
+      "final_stats": {
+        "speed": 291,
+        "stamina": 106,
+        "power": 271,
+        "guts": 256,
+        "wit": 284
+      },
+      "grade": "E"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "End",
+      "running_style": 4,
+      "date": "2026-06-18",
+      "started_at": "2026-06-18T10:29:42",
+      "fans_gained": 282595,
+      "final_fans": 440478,
+      "final_turn": 76,
+      "finished": false,
+      "final_stats": {
+        "speed": 946,
+        "stamina": 390,
+        "power": 802,
+        "guts": 686,
+        "wit": 710
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "End",
+      "running_style": 4,
+      "date": "2026-06-18",
+      "started_at": "2026-06-18T10:37:33",
+      "fans_gained": 62010,
+      "final_fans": 502488,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1003,
+        "stamina": 442,
+        "power": 854,
+        "guts": 738,
+        "wit": 782
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "End",
+      "running_style": 4,
+      "date": "2026-06-18",
+      "started_at": "2026-06-18T10:38:21",
+      "fans_gained": 592080,
+      "final_fans": 592081,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1002,
+        "stamina": 480,
+        "power": 845,
+        "guts": 899,
+        "wit": 929
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-18",
+      "started_at": "2026-06-18T10:47:08",
+      "fans_gained": 693655,
+      "final_fans": 693656,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1043,
+        "stamina": 506,
+        "power": 1062,
+        "guts": 791,
+        "wit": 858
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-18",
+      "started_at": "2026-06-18T10:54:03",
+      "fans_gained": 668996,
+      "final_fans": 668997,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1200,
+        "stamina": 476,
+        "power": 999,
+        "guts": 798,
+        "wit": 761
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100601",
+      "chara_name": "Oguri Cap",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-18",
+      "started_at": "2026-06-18T11:09:41",
+      "fans_gained": 547280,
+      "final_fans": 547281,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 886,
+        "stamina": 555,
+        "power": 906,
+        "guts": 775,
+        "wit": 620
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "104601",
+      "chara_name": "Smart Falcon",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-18",
+      "started_at": "2026-06-18T12:23:07",
+      "fans_gained": 605305,
+      "final_fans": 605306,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1106,
+        "stamina": 593,
+        "power": 994,
+        "guts": 607,
+        "wit": 938
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "104601",
+      "chara_name": "Smart Falcon",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-18",
+      "started_at": "2026-06-18T12:35:32",
+      "fans_gained": 591716,
+      "final_fans": 591717,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1200,
+        "stamina": 478,
+        "power": 1200,
+        "guts": 601,
+        "wit": 758
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100401",
+      "chara_name": "Maruzensky",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-18",
+      "started_at": "2026-06-18T16:57:10",
+      "fans_gained": 625941,
+      "final_fans": 625942,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1200,
+        "stamina": 643,
+        "power": 967,
+        "guts": 639,
+        "wit": 1107
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100401",
+      "chara_name": "Maruzensky",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-18",
+      "started_at": "2026-06-18T17:05:58",
+      "fans_gained": 538906,
+      "final_fans": 538907,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1200,
+        "stamina": 488,
+        "power": 872,
+        "guts": 492,
+        "wit": 1013
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100401",
+      "chara_name": "Maruzensky",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-18",
+      "started_at": "2026-06-18T17:20:24",
+      "fans_gained": 526237,
+      "final_fans": 526238,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1026,
+        "stamina": 567,
+        "power": 857,
+        "guts": 582,
+        "wit": 936
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "100401",
+      "chara_name": "Maruzensky",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-18",
+      "started_at": "2026-06-18T17:40:54",
+      "fans_gained": 584734,
+      "final_fans": 584735,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1190,
+        "stamina": 476,
+        "power": 853,
+        "guts": 580,
+        "wit": 1031
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100401",
+      "chara_name": "Maruzensky",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-18",
+      "started_at": "2026-06-18T17:57:40",
+      "fans_gained": 569908,
+      "final_fans": 569909,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1200,
+        "stamina": 473,
+        "power": 1034,
+        "guts": 617,
+        "wit": 926
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100401",
+      "chara_name": "Maruzensky",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-18",
+      "started_at": "2026-06-18T18:15:54",
+      "fans_gained": 596581,
+      "final_fans": 596582,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1200,
+        "stamina": 437,
+        "power": 858,
+        "guts": 528,
+        "wit": 1200
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100401",
+      "chara_name": "Maruzensky",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-18",
+      "started_at": "2026-06-18T21:00:01",
+      "fans_gained": 232068,
+      "final_fans": 242503,
+      "final_turn": 49,
+      "finished": false,
+      "final_stats": {
+        "speed": 797,
+        "stamina": 305,
+        "power": 624,
+        "guts": 328,
+        "wit": 443
+      },
+      "grade": "C"
+    },
+    {
+      "card_id": "100401",
+      "chara_name": "Maruzensky",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-18",
+      "started_at": "2026-06-18T21:09:30",
+      "fans_gained": 303247,
+      "final_fans": 545750,
+      "final_turn": 76,
+      "finished": false,
+      "final_stats": {
+        "speed": 1169,
+        "stamina": 473,
+        "power": 882,
+        "guts": 464,
+        "wit": 762
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "100401",
+      "chara_name": "Maruzensky",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-18",
+      "started_at": "2026-06-18T21:17:39",
+      "fans_gained": 58344,
+      "final_fans": 604094,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1200,
+        "stamina": 513,
+        "power": 922,
+        "guts": 504,
+        "wit": 836
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "100401",
+      "chara_name": "Maruzensky",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-18",
+      "started_at": "2026-06-18T21:22:25",
+      "fans_gained": 533703,
+      "final_fans": 625729,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1148,
+        "stamina": 579,
+        "power": 969,
+        "guts": 644,
+        "wit": 956
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100401",
+      "chara_name": "Maruzensky",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-18",
+      "started_at": "2026-06-18T21:27:17",
+      "fans_gained": 587421,
+      "final_fans": 587422,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1086,
+        "stamina": 539,
+        "power": 858,
+        "guts": 516,
+        "wit": 1136
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100401",
+      "chara_name": "Maruzensky",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-18",
+      "started_at": "2026-06-18T21:34:11",
+      "fans_gained": 595236,
+      "final_fans": 595237,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1200,
+        "stamina": 541,
+        "power": 895,
+        "guts": 414,
+        "wit": 1108
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100401",
+      "chara_name": "Maruzensky",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-18",
+      "started_at": "2026-06-18T21:40:48",
+      "fans_gained": 532209,
+      "final_fans": 532210,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1016,
+        "stamina": 505,
+        "power": 1041,
+        "guts": 489,
+        "wit": 1001
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100401",
+      "chara_name": "Maruzensky",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-18",
+      "started_at": "2026-06-18T21:48:20",
+      "fans_gained": 626431,
+      "final_fans": 626432,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1171,
+        "stamina": 549,
+        "power": 869,
+        "guts": 559,
+        "wit": 982
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100401",
+      "chara_name": "Maruzensky",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-18",
+      "started_at": "2026-06-18T21:55:32",
+      "fans_gained": 552780,
+      "final_fans": 552781,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1092,
+        "stamina": 592,
+        "power": 1017,
+        "guts": 598,
+        "wit": 1014
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100401",
+      "chara_name": "Maruzensky",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-18",
+      "started_at": "2026-06-18T22:02:39",
+      "fans_gained": 503855,
+      "final_fans": 503856,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1200,
+        "stamina": 419,
+        "power": 1004,
+        "guts": 489,
+        "wit": 748
+      },
+      "grade": "S"
+    },
+    {
+      "card_id": "100401",
+      "chara_name": "Maruzensky",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-18",
+      "started_at": "2026-06-18T22:09:40",
+      "fans_gained": 577194,
+      "final_fans": 577195,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1131,
+        "stamina": 667,
+        "power": 880,
+        "guts": 485,
+        "wit": 1102
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100401",
+      "chara_name": "Maruzensky",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-18",
+      "started_at": "2026-06-18T22:16:43",
+      "fans_gained": 638172,
+      "final_fans": 638173,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1200,
+        "stamina": 564,
+        "power": 1015,
+        "guts": 582,
+        "wit": 998
+      },
+      "grade": "S+"
+    },
+    {
+      "card_id": "100401",
+      "chara_name": "Maruzensky",
+      "preset": "late s",
+      "running_style": 2,
+      "date": "2026-06-18",
+      "started_at": "2026-06-18T22:24:02",
+      "fans_gained": 576576,
+      "final_fans": 576577,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1138,
+        "stamina": 510,
+        "power": 993,
+        "guts": 529,
+        "wit": 950
+      },
+      "grade": "S+"
+    },
+    {
+      "timestamp": "2026-06-19T00:09:10",
+      "date": "2026-06-19",
+      "card_id": "100401",
+      "chara_name": "Maruzensky",
+      "fans_gained": 462171,
+      "final_fans": 577608,
+      "preset": "Front runn",
+      "running_style": 1,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1167,
+        "stamina": 465,
+        "power": 935,
+        "guts": 543,
+        "wit": 0
+      },
+      "grade": "A"
+    },
+    {
+      "timestamp": "2026-06-19T11:23:32",
+      "date": "2026-06-19",
+      "card_id": "100401",
+      "chara_name": "Maruzensky",
+      "fans_gained": 596188,
+      "final_fans": 596189,
+      "preset": "Front runn",
+      "running_style": 1,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1159,
+        "stamina": 514,
+        "power": 873,
+        "guts": 596,
+        "wit": 0
+      },
+      "grade": "A"
+    },
+    {
+      "timestamp": "2026-06-19T11:30:56",
+      "date": "2026-06-19",
+      "card_id": "100401",
+      "chara_name": "Maruzensky",
+      "fans_gained": 447418,
+      "final_fans": 582887,
+      "preset": "Front runn",
+      "running_style": 1,
+      "final_turn": 78,
+      "finished": true,
+      "final_stats": {
+        "speed": 1066,
+        "stamina": 561,
+        "power": 966,
+        "guts": 541,
+        "wit": 0
+      },
+      "grade": "A"
+    }
+  ],
+  "all_time_gained": 75594704,
+  "all_time_careers": 136
+}

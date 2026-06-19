@@ -148,4 +148,12 @@ def write_report(report, output_dir):
         shutil.copyfile(path, latest)
     except Exception:
         pass
+
+
+    try:
+        from career_bot.ai_dataset import export_report_ai_datasets
+        export_report_ai_datasets(report, output_dir)
+    except Exception:
+        pass
+
     return path

@@ -2,6 +2,10 @@ import json
 from pathlib import Path
 
 
+def _solver_mode(preset):
+    return str((preset or {}).get("race_solver_mode") or "manual").strip().lower()
+
+
 class RacePlanner:
     def __init__(self, base_dir):
         self.base_dir = Path(base_dir)
@@ -9,6 +13,8 @@ class RacePlanner:
         self.program = {}
         self.instance = {}
         self.rejected = set()
+        # Solver plan loaded at career start when mode=="auto"
+        self._solver_plan = None
         self._load()
 
     def _load(self):
@@ -32,10 +38,33 @@ class RacePlanner:
             if "program_id" in r and "chara_id" in r
         }
 
+    def load_solver_plan(self, preset):
+        """Load (or re-generate) the solver plan at career start."""
+        if _solver_mode(preset) != "auto":
+            self._solver_plan = None
+            return
+        try:
+            from career_bot.race_solver import load_plan
+            self._solver_plan = load_plan(self.base_dir, preset.get("name", "default"))
+        except Exception:
+            self._solver_plan = None
+
     def wanted_programs(self, preset, turn=None):
         result = []
         seen = set()
         current_turn = int(turn or 0)
+
+        # Auto-solver mode: read from solver plan decisions
+        if _solver_mode(preset) == "auto" and self._solver_plan:
+            decisions = self._solver_plan.get("decisions") or {}
+            key = str(current_turn)
+            action = decisions.get(key) or {}
+            if action.get("type") == "race":
+                pid = action.get("program_id")
+                if pid:
+                    return [int(pid)]
+            return []
+
         for value in preset.get("extra_race_list") or []:
             try:
                 race_id = int(value)
