@@ -662,4 +662,5 @@ def plan_summary(base_dir: Any, preset_name: str) -> dict:
         "start_turn": plan.get("start_turn", 1),
         "generated_at": plan.get("generated_at"),
         "notes": plan.get("notes", []),
+        "schedule": plan.get("schedule", []),
     }

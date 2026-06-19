@@ -3399,7 +3399,7 @@ async function loadSolverPlanPreview(presetName) {
 
     try {
         const data = await apiJson(`/api/solver/plan/${encodeURIComponent(presetName)}`);
-        if (!data?.success) {
+        if (!data?.available) {
             panel.style.display = 'none';
             if (statusEl) statusEl.textContent = 'No plan — click SOLVE NOW';
             return;

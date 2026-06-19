@@ -1127,27 +1127,36 @@ class CareerRunner:
                     free_clocks = 0
                 break
 
-        # Jewel continue: if BURN CLOCKS is on, no std/free clocks remain,
-        # and the race was not won, try a jewel continue (continue_type=3).
-        # If the server refuses (205) or we can't afford it, skip gracefully.
+        # Jewel continue: if BURN CLOCKS is on, no clocks remain, and rank > 1,
+        # attempt a jewel continue (continue_type=3).  We do NOT gate on the
+        # cached coin_info balance — that value is only refreshed when API
+        # responses happen to include coin_info and can be stale.  Instead we
+        # always attempt it and let the server return 205/error if the account
+        # can't afford it, then skip gracefully.
         if self.burn_clocks and rank > 1:
-            jewels = int((client.coin_info or {}).get("fcoin", 0)) + int((client.coin_info or {}).get("coin", 0))
-            if jewels > 0:
-                self._log("race_jewel_continue", current_turn, f"rank {rank}, jewels={jewels}")
-                try:
-                    cont_res = client.race_continue(current_turn=current_turn, continue_type=3)
-                    cont_data = cont_res.get("data") or {}
-                    if strategy and cont_data.get("unchecked_event_array"):
-                        self._drain_events(client, strategy, cont_res)
-                    dna_sleep(0.1, 0.45, 0.166 + client.api_jitter, 0.05)
-                    res = client.race_start(is_short=is_short, current_turn=current_turn)
-                    rank = self._parse_race_rank(res)
-                    self._log("race_rank_jewel", current_turn, f"rank {rank} after jewel continue")
-                    with self.lock:
-                        self.status["_last_race_rank"] = rank
-                except Exception as e:
-                    self._log("race_jewel_failed", current_turn, str(e))
-                    # 205 = server won't allow it, any error = skip gracefully
+            jewels_cached = int((client.coin_info or {}).get("fcoin", 0)) + int((client.coin_info or {}).get("coin", 0))
+            self._log("race_jewel_continue", current_turn, f"rank {rank}, jewels_cached={jewels_cached}, attempting type=3")
+            print(f"[t{current_turn}] jewel continue attempt (rank={rank}, jewels_cached={jewels_cached})", flush=True)
+            try:
+                cont_res = client.race_continue(current_turn=current_turn, continue_type=3)
+                cont_data = cont_res.get("data") or {}
+                # Update coin_info from the continue response if available
+                if cont_data.get("coin_info"):
+                    client.coin_info = cont_data["coin_info"]
+                if strategy and cont_data.get("unchecked_event_array"):
+                    self._drain_events(client, strategy, cont_res)
+                dna_sleep(0.1, 0.45, 0.166 + client.api_jitter, 0.05)
+                res = client.race_start(is_short=is_short, current_turn=current_turn)
+                rank = self._parse_race_rank(res)
+                self._log("race_rank_jewel", current_turn, f"rank {rank} after jewel continue")
+                print(f"[t{current_turn}] jewel continue result: rank={rank}", flush=True)
+                with self.lock:
+                    self.status["_last_race_rank"] = rank
+            except Exception as e:
+                err_str = str(e)
+                self._log("race_jewel_failed", current_turn, err_str)
+                print(f"[t{current_turn}] jewel continue failed: {err_str[:80]}", flush=True)
+                # 205 = can't afford / not allowed — skip gracefully
 
         if strategy:
             res_data = res.get("data") or {}

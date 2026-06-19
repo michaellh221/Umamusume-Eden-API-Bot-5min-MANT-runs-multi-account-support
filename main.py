@@ -1355,7 +1355,14 @@ def apply_career_result(result):
             "scenario_id": chara_info.get('scenario_id', 0),
             "fans": chara_info.get('fans', 0),
             "vital": chara_info.get('vital', 0),
-            "max_vital": chara_info.get('max_vital', 0)
+            "max_vital": chara_info.get('max_vital', 0),
+            # Aptitude fields — used by solver when no live chara_info is passed
+            "proper_ground_turf":     chara_info.get('proper_ground_turf', 8),
+            "proper_ground_dirt":     chara_info.get('proper_ground_dirt', 1),
+            "proper_distance_short":  chara_info.get('proper_distance_short', 8),
+            "proper_distance_mile":   chara_info.get('proper_distance_mile', 8),
+            "proper_distance_middle": chara_info.get('proper_distance_middle', 8),
+            "proper_distance_long":   chara_info.get('proper_distance_long', 8),
         })
     active_account = account
     if active_dashboard_data:
@@ -3086,9 +3093,8 @@ async def solver_status_endpoint():
 @app.get("/api/solver/plan/{preset_name}")
 async def solver_get_plan(preset_name: str):
     try:
-        from career_bot.race_solver import load_plan, plan_summary
-        plan = load_plan(base_dir, preset_name)
-        return plan_summary(plan)
+        from career_bot.race_solver import plan_summary
+        return plan_summary(base_dir, preset_name)
     except Exception as e:
         return {"available": False, "error": str(e)}
 
@@ -3106,9 +3112,22 @@ async def solver_run(request: Request):
         preset = store.load(preset_name)
         if not preset:
             return {"success": False, "error": f"Preset '{preset_name}' not found"}
-        # Use chara_info from body if provided (live solve during career)
+        # Use chara_info from body if provided (live solve during career).
+        # Fall back to aptitudes stored in the active account's career dict so
+        # the solver knows whether this character can run dirt races.
         chara_info = body.get("chara_info") or {}
         current_turn = int(body.get("current_turn") or 1)
+        # Only use stored aptitudes when solving mid-career (current_turn > 1).
+        # Pre-career solves (turn=1) should not inherit a previous character's
+        # low aptitudes — they belong to a different character.
+        if not chara_info and current_turn > 1 and active_account:
+            career = (active_account or {}).get("career") or {}
+            apt_keys = ["proper_ground_turf", "proper_ground_dirt",
+                        "proper_distance_short", "proper_distance_mile",
+                        "proper_distance_middle", "proper_distance_long"]
+            stored_apt = {k: career[k] for k in apt_keys if k in career}
+            if stored_apt:
+                chara_info = stored_apt
         plan = solve(base_dir, preset, chara_info=chara_info or None, current_turn=current_turn)
         return plan
     except Exception as e:
