@@ -108,6 +108,17 @@ def _atomic_write(path: Path, payload: dict) -> None:
 
 # ── Race data helpers ──────────────────────────────────────────────────────
 
+def _load_ai_policy(base_dir: Any) -> dict:
+    """Load policy_adjustments.json produced by the AI trainer."""
+    try:
+        path = _solver_dir(base_dir).parent / "ai" / "policy_adjustments.json"
+        if path.exists():
+            return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    return {}
+
+
 def _load_race_map(base_dir: Any) -> dict:
     path = Path(base_dir) / "data" / "race_map.json"
     if not path.exists():
@@ -177,6 +188,10 @@ def _race_candidates(base_dir: Any, preset: dict, chara: dict) -> List[dict]:
     candidates = []
     seen = set()
 
+    # AI win-rate adjustments blended into the base score.
+    # policy_adjustments.json is built by the trainer after each batch of careers.
+    _ai_policy = _load_ai_policy(base_dir)
+
     for meta_id_str, meta_entry in meta.items():
         pid = int(meta_entry.get("program_id") or 0)
         turn = int(meta_entry.get("turn") or 0)
@@ -223,6 +238,16 @@ def _race_candidates(base_dir: Any, preset: dict, chara: dict) -> List[dict]:
 
         if not allow_summer and turn in SUMMER_TURNS:
             score -= 5.0  # heavy penalty (usually net negative)
+
+        # Blend in AI policy adjustment (proportional to data confidence).
+        # adjustment units match score units; scale by confidence so low-data
+        # races don't get over-penalised / over-boosted.
+        _ai_entry = _ai_policy.get(str(pid))
+        if _ai_entry:
+            ai_adj   = float(_ai_entry.get("adjustment") or 0.0)
+            ai_starts = int(_ai_entry.get("starts") or 0)
+            ai_conf  = min(1.0, ai_starts / 50.0)   # full weight after 50 starts
+            score += ai_adj * ai_conf * 0.25         # blend at 25%
 
         candidates.append({
             "turn": turn,

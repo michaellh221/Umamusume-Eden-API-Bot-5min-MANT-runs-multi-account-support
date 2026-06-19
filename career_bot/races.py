@@ -15,6 +15,8 @@ class RacePlanner:
         self.rejected = set()
         # Solver plan loaded at career start when mode=="auto"
         self._solver_plan = None
+        # AI win-rate policy loaded at career start for race re-ranking
+        self._ai_policy = {}
         self._load()
 
     def _load(self):
@@ -48,6 +50,12 @@ class RacePlanner:
             self._solver_plan = load_plan(self.base_dir, preset.get("name", "default"))
         except Exception:
             self._solver_plan = None
+        # Load AI policy regardless of solver mode — used for race re-ranking.
+        try:
+            from career_bot.race_solver import _load_ai_policy
+            self._ai_policy = _load_ai_policy(self.base_dir)
+        except Exception:
+            self._ai_policy = {}
 
     def wanted_programs(self, preset, turn=None):
         result = []
@@ -164,6 +172,18 @@ class RacePlanner:
         wanted = self.wanted_programs(preset, turn)
         valid_wanted = [pid for pid in wanted if pid in available and (turn, pid) not in self.rejected]
         
+        # Re-rank by AI win-rate adjustment when multiple races are available.
+        # This lets the bot prefer historically high-win-rate programs when the
+        # preset lists more than one option at the same turn.
+        if len(valid_wanted) > 1 and self._ai_policy:
+            def _ai_rank(pid):
+                entry = self._ai_policy.get(str(pid)) or {}
+                adj   = float(entry.get("adjustment") or 0.0)
+                starts = int(entry.get("starts") or 0)
+                conf   = min(1.0, starts / 20.0)
+                return adj * conf
+            valid_wanted = sorted(valid_wanted, key=_ai_rank, reverse=True)
+
         if not valid_wanted:
             chara = data.get("chara_info") or {}
             # Run the debut race if available and aptitude is OK (>= B on both
