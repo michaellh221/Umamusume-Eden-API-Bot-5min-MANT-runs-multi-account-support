@@ -101,7 +101,7 @@ def serialize_preset(raw):
     # Race solver settings
     solver_mode = str(data.get("race_solver_mode") or "manual").strip().lower()
     serialized["race_solver_mode"] = solver_mode if solver_mode in ("off", "auto", "manual") else "manual"
-    serialized["solver_max_races_in_row"] = max(1, min(5, as_int(data.get("solver_max_races_in_row"), 2)))
+    serialized["solver_max_races_in_row"] = max(1, min(5, as_int(data.get("solver_max_races_in_row"), 3)))
     serialized["solver_include_op"] = bool(data.get("solver_include_op") or False)
     serialized["solver_allow_summer"] = bool(data.get("solver_allow_summer") or False)
     serialized["solver_apt_floor"] = max(1, min(8, as_int(data.get("solver_apt_floor"), 6)))

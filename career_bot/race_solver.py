@@ -237,7 +237,7 @@ def _race_candidates(base_dir: Any, preset: dict, chara: dict) -> List[dict]:
         score = base + dist_bonus + apt_bonus
 
         if not allow_summer and turn in SUMMER_TURNS:
-            score -= 5.0  # heavy penalty (usually net negative)
+            continue  # hard exclude — summer turns reserved for training
 
         # Blend in AI policy adjustment (proportional to data confidence).
         # adjustment units match score units; scale by confidence so low-data
@@ -359,19 +359,31 @@ def _solve_milp(
     return picked
 
 
-def _solve_beam(
+def _solve_dp(
     candidates: List[dict],
     manual_locks: dict,
     max_streak: int,
     start_turn: int,
     allow_summer: bool,
-    beam_width: int = 32,
 ) -> List[dict]:
-    """Greedy beam-search fallback (no external dependencies)."""
-    # Group candidates by turn
+    """
+    Exact dynamic-programming fallback (no external dependencies).
+
+    State = (turn_index, streak) where streak is the number of consecutive
+    races ending at the previous candidate turn.  Gaps between candidate turns
+    implicitly reset the streak to 0 because the bot trains on those turns.
+
+    Complexity: O(N * max_streak * R) where N ≤ 72 turns and R ≤ 5 races/turn.
+    Easily handles the full career in milliseconds.
+    """
+    # Group candidates by turn; keep best-scored race per turn for DP scoring
     by_turn: Dict[int, List[dict]] = defaultdict(list)
     for row in candidates:
         by_turn[int(row["turn"])].append(row)
+
+    # Sort each turn's options by score descending so index-0 = best
+    for t in by_turn:
+        by_turn[t].sort(key=lambda r: r["score"], reverse=True)
 
     # Build forced locks
     forced_race: Dict[int, int] = {}
@@ -383,50 +395,95 @@ def _solve_beam(
         elif str(lock).isdigit():
             forced_race[turn] = int(lock)
 
-    # State: (score_sum, streak, scheduled_races)
-    # Represent as beam of (neg_score, streak, list_of_rows)
-    beam = [(0.0, 0, [])]
-
     all_turns = sorted(set(by_turn.keys()) | set(forced_race.keys()) | set(forced_train))
     all_turns = [t for t in all_turns if t >= start_turn]
+    N = len(all_turns)
+    if N == 0:
+        return []
 
-    for turn in all_turns:
-        new_beam = []
-        for total_score, streak, history in beam:
-            # Forced train
-            if turn in forced_train:
-                new_beam.append((total_score, 0, history))
+    # dp[i][s] = (best_score, choice_list)
+    # choice_list: None = train, dict = race row chosen
+    NEG_INF = float("-inf")
+    # dp indexed [0..N][0..max_streak]
+    dp: List[List[float]] = [[NEG_INF] * (max_streak + 1) for _ in range(N + 1)]
+    # back-pointer: (prev_streak, choice_row_or_None)
+    back: List[List[tuple]] = [[None] * (max_streak + 1) for _ in range(N + 1)]
+    dp[0][0] = 0.0
+
+    for i, turn in enumerate(all_turns):
+        # Streak resets to 0 if there's a gap before this turn (implicit training)
+        gap = (i == 0) or (turn > all_turns[i - 1] + 1)
+
+        for s in range(max_streak + 1):
+            if dp[i][s] == NEG_INF:
                 continue
-            # Forced race
+            base = dp[i][s]
+            eff_s = 0 if gap else s  # effective incoming streak
+
+            # --- Forced train ---
+            if turn in forced_train:
+                nxt = 0
+                if base > dp[i + 1][nxt]:
+                    dp[i + 1][nxt] = base
+                    back[i + 1][nxt] = (s, None)
+                continue
+
+            # --- Forced race ---
             if turn in forced_race:
                 pid = forced_race[turn]
                 matched = [r for r in by_turn.get(turn, []) if int(r["program_id"]) == pid]
-                if matched:
+                if matched and eff_s < max_streak:
                     r = matched[0]
-                    new_streak = streak + 1
-                    if new_streak <= max_streak:
-                        new_beam.append((total_score + r["score"], new_streak, history + [r]))
-                        continue
-                new_beam.append((total_score, 0, history))
+                    nxt = eff_s + 1
+                    val = base + r["score"]
+                    if val > dp[i + 1][nxt]:
+                        dp[i + 1][nxt] = val
+                        back[i + 1][nxt] = (s, r)
+                else:
+                    # Lock impossible / streak full — fall back to train
+                    nxt = 0
+                    if base > dp[i + 1][nxt]:
+                        dp[i + 1][nxt] = base
+                        back[i + 1][nxt] = (s, None)
                 continue
 
-            # Train option
-            new_beam.append((total_score, 0, history))
+            # --- Train option (always available) ---
+            nxt = 0
+            if base > dp[i + 1][nxt]:
+                dp[i + 1][nxt] = base
+                back[i + 1][nxt] = (s, None)
 
-            # Race options
-            if streak < max_streak:
+            # --- Race options (only if streak allows) ---
+            if eff_s < max_streak:
                 options = by_turn.get(turn, [])
-                best = sorted(options, key=lambda r: r["score"], reverse=True)[:3]
-                for r in best:
-                    new_beam.append((total_score + r["score"], streak + 1, history + [r]))
+                for r in options:  # already sorted best-first
+                    nxt = eff_s + 1
+                    val = base + r["score"]
+                    if val > dp[i + 1][nxt]:
+                        dp[i + 1][nxt] = val
+                        back[i + 1][nxt] = (s, r)
+                    break  # only need the best race per turn per state
 
-        # Keep top beam_width states
-        new_beam.sort(key=lambda x: -x[0])
-        beam = new_beam[:beam_width]
+    # Find best final state
+    best_score = NEG_INF
+    best_s = 0
+    for s in range(max_streak + 1):
+        if dp[N][s] > best_score:
+            best_score = dp[N][s]
+            best_s = s
 
-    if not beam:
-        return []
-    _, _, picked = beam[0]
+    # Reconstruct path
+    picked = []
+    cur_s = best_s
+    for i in range(N, 0, -1):
+        entry = back[i][cur_s]
+        if entry is None:
+            break
+        prev_s, choice = entry
+        if choice is not None:
+            picked.append(dict(choice))
+        cur_s = prev_s
+
     picked.sort(key=lambda r: int(r["turn"]))
     return picked
 
@@ -459,12 +516,18 @@ def solve(
         schedule (list of race dicts), generated_at, notes
     """
     chara = chara_info or {}
-    # If no chara info, assume best aptitude so all races pass the gate
+    # If no chara info, use a safe turf-only default.
+    # Dirt is excluded (apt=1 < floor) since most characters are turf-only.
+    # The server passes real aptitudes from the active career where possible;
+    # this fallback only fires when solving before any career has been started.
     if not chara:
         chara = {
-            "proper_ground_turf": 8, "proper_ground_dirt": 8,
-            "proper_distance_short": 8, "proper_distance_mile": 8,
-            "proper_distance_middle": 8, "proper_distance_long": 8,
+            "proper_ground_turf":     8,
+            "proper_ground_dirt":     1,  # excluded by default
+            "proper_distance_short":  8,
+            "proper_distance_mile":   8,
+            "proper_distance_middle": 8,
+            "proper_distance_long":   8,
         }
 
     max_streak = int(preset.get("solver_max_races_in_row") or 2)
@@ -489,11 +552,11 @@ def solve(
         picked = _solve_milp(candidates, manual_locks, max_streak, start_turn, allow_summer, timeout)
         notes.append("Exact MILP backend (scipy) used.")
     except Exception as exc:
-        backend = "beam"
-        notes.append(f"MILP unavailable ({exc}), using beam fallback.")
+        backend = "dp"
+        notes.append(f"MILP unavailable ({exc}), using exact DP fallback.")
         try:
-            picked = _solve_beam(candidates, manual_locks, max_streak, start_turn, allow_summer)
-            notes.append("Beam heuristic backend used.")
+            picked = _solve_dp(candidates, manual_locks, max_streak, start_turn, allow_summer)
+            notes.append("Exact DP backend used.")
         except Exception as exc2:
             plan = _empty_plan(start_turn, f"solver error: {exc2}")
             _save_plan(base_dir, preset.get("name", "default"), plan)
@@ -587,50 +650,16 @@ def load_plan(base_dir: Any, preset_name: str) -> Optional[dict]:
         return None
 
 
-def plan_for_turn(plan: Optional[dict], current_turn: int) -> List[int]:
-    """Return program_ids for races on or after current_turn, from saved plan."""
-    if not plan or not plan.get("success"):
-        return []
-    decisions = plan.get("decisions") or {}
-    result = []
-    for turn_str, action in sorted(decisions.items(), key=lambda x: int(x[0])):
-        turn = int(turn_str)
-        if turn < current_turn:
-            continue
-        if action.get("type") == "race":
-            pid = action.get("program_id")
-            if pid:
-                result.append(int(pid))
-    return result
-
-
-def solver_status(base_dir: Any) -> dict:
-    """Return the last solver run status."""
-    path = _status_path(base_dir)
-    milp_ok = _scipy_milp_available()
-    base = {
-        "milp_available": milp_ok,
-        "backend_label": "MILP (scipy)" if milp_ok else "Beam (fallback)",
-    }
-    if not path.exists():
-        return {**base, "last_solve_at": None, "success": None, "race_count": 0, "notes": []}
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-        return {**base, **data}
-    except Exception:
-        return {**base, "last_solve_at": None, "success": None, "race_count": 0, "notes": []}
-
-
-def plan_summary(plan: Optional[dict]) -> dict:
-    """Compact summary of a plan for the UI."""
+def plan_summary(base_dir: Any, preset_name: str) -> dict:
+    """Return a lightweight summary of the saved plan (for the /api/solver/status endpoint)."""
+    plan = load_plan(base_dir, preset_name)
     if not plan:
         return {"available": False}
     return {
-        "available": plan.get("success", False),
+        "available": True,
         "backend": plan.get("backend", "none"),
         "race_count": plan.get("race_count", 0),
         "start_turn": plan.get("start_turn", 1),
         "generated_at": plan.get("generated_at"),
         "notes": plan.get("notes", []),
-        "schedule": plan.get("schedule", []),
     }
